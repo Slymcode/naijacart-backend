@@ -50,7 +50,7 @@ export class PaymentService {
             orderId,
             orderNumber: order.orderNumber,
           },
-          callback_url: "http://localhost:5173/payment/callback",
+          callback_url: process.env.FRONTEND_URL + "/payment/callback",
         },
         {
           headers: {
