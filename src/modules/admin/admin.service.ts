@@ -130,7 +130,7 @@ export class AdminService {
       where: { id: withdrawal.affiliateId },
       data: {
         totalEarnings: {
-          increment: withdrawal.amount,
+          decrement: withdrawal.amount,
         },
         pendingEarnings: {
           decrement: withdrawal.amount,

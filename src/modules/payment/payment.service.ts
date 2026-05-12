@@ -131,6 +131,26 @@ export class PaymentService {
         data: { status: CommissionStatus.APPROVED },
       });
 
+      // Update affiliate pending earnings
+      const approvedCommissions = await this.prisma.commission.findMany({
+        where: { orderId, status: CommissionStatus.APPROVED },
+      });
+      const totalCommission = approvedCommissions.reduce(
+        (sum, c) => sum + c.amount,
+        0,
+      );
+      if (totalCommission > 0 && approvedCommissions.length > 0) {
+        const affiliateId = approvedCommissions[0].affiliateId;
+        await this.prisma.affiliate.update({
+          where: { id: affiliateId },
+          data: {
+            pendingEarnings: {
+              increment: totalCommission,
+            },
+          },
+        });
+      }
+
       for (const item of order.items ?? []) {
         await this.prisma.product.update({
           where: { id: item.productId },

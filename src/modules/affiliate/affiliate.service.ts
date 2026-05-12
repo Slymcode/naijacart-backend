@@ -29,7 +29,10 @@ export class AffiliateService {
     }
 
     // Generate unique affiliate code
-    const code = `AFF-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`;
+    const code = `AFF-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(7)
+      .toUpperCase()}`;
 
     const affiliate = await this.prisma.affiliate.create({
       data: {
@@ -88,7 +91,10 @@ export class AffiliateService {
     // Check if link already exists
     const existingLink = await this.prisma.affiliateLink.findUnique({
       where: {
-        affiliateId_productId: { affiliateId: affiliate.id, productId },
+        affiliateId_productId: {
+          affiliateId: affiliate.id,
+          productId,
+        },
       },
     });
 
@@ -127,13 +133,28 @@ export class AffiliateService {
       (sum, link) => sum + link.clicks,
       0,
     );
+
     const totalConversions = affiliate.referrals.length;
+
+    // Total earnings ever earned
     const totalEarnings = affiliate.commissions
       .filter((c) => c.status === "APPROVED" || c.status === "PAID")
       .reduce((sum, c) => sum + c.amount, 0);
-    const availableEarnings = affiliate.commissions
+
+    // Approved commissions
+    const approvedCommissionTotal = affiliate.commissions
       .filter((c) => c.status === "APPROVED")
       .reduce((sum, c) => sum + c.amount, 0);
+
+    // Money already requested/withdrawn
+    const withdrawnOrReserved = affiliate.withdrawals
+      .filter((w) => ["PENDING", "APPROVED", "COMPLETED"].includes(w.status))
+      .reduce((sum, w) => sum + w.amount, 0);
+
+    // Actual available earnings
+    const availableEarnings = approvedCommissionTotal - withdrawnOrReserved;
+
+    // Pending commissions
     const pendingEarnings = affiliate.commissions
       .filter((c) => c.status === "PENDING")
       .reduce((sum, c) => sum + c.amount, 0);
@@ -181,7 +202,7 @@ export class AffiliateService {
       throw new NotFoundException("Affiliate not found");
     }
 
-    // Calculate approved earnings available for withdrawal
+    // Get approved commissions
     const approvedCommissions = await this.prisma.commission.findMany({
       where: {
         affiliateId: affiliate.id,
@@ -194,10 +215,13 @@ export class AffiliateService {
       0,
     );
 
+    // Get all withdrawals already reserved or paid
     const outstandingRequests = await this.prisma.withdrawalRequest.aggregate({
       where: {
         affiliateId: affiliate.id,
-        status: { in: ["PENDING", "APPROVED"] },
+        status: {
+          in: ["PENDING", "APPROVED", "COMPLETED"],
+        },
       },
       _sum: {
         amount: true,
@@ -205,6 +229,7 @@ export class AffiliateService {
     });
 
     const reservedAmount = outstandingRequests._sum.amount || 0;
+
     const availableAmount = totalApproved - reservedAmount;
 
     if (withdrawalRequestDto.amount > availableAmount) {
@@ -236,7 +261,11 @@ export class AffiliateService {
     const affiliates = await this.prisma.affiliate.findMany({
       take: limit,
       orderBy: { totalEarnings: "desc" },
-      include: { user: true, referrals: true, commissions: true },
+      include: {
+        user: true,
+        referrals: true,
+        commissions: true,
+      },
     });
 
     return affiliates.map((aff) => ({
