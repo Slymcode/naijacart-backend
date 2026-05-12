@@ -162,6 +162,15 @@ export class PaymentService {
         });
       }
 
+      await this.prisma.cartItem.deleteMany({
+        where: {
+          userId: order.userId,
+          productId: {
+            in: order.items.map((item) => item.productId),
+          },
+        },
+      });
+
       return {
         success: true,
         message: "Payment verified successfully",
