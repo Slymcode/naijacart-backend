@@ -149,10 +149,12 @@ export class AdminService {
   }
 
   async setAffiliateCommission(productId: string, percentage: number) {
+    const roundedPercentage = Math.round(percentage * 100) / 100;
+
     return this.prisma.affiliateCommission.upsert({
       where: { productId },
-      create: { productId, percentage },
-      update: { percentage },
+      create: { productId, percentage: roundedPercentage },
+      update: { percentage: roundedPercentage },
     });
   }
 

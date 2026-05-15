@@ -7,10 +7,29 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   async createProduct(data: CreateProductDto) {
-    return this.prisma.product.create({
-      data,
+    const { commissionPercentage, ...productData } = data as any;
+
+    const product = await this.prisma.product.create({
+      data: productData,
       include: { productMetrics: true },
     });
+
+    if (commissionPercentage !== undefined && commissionPercentage !== null) {
+      const roundedPercentage = Math.round(commissionPercentage * 100) / 100;
+
+      await this.prisma.affiliateCommission.upsert({
+        where: { productId: product.id },
+        create: {
+          productId: product.id,
+          percentage: roundedPercentage,
+        },
+        update: {
+          percentage: roundedPercentage,
+        },
+      });
+    }
+
+    return product;
   }
 
   async getProducts(filters?: any) {
@@ -45,7 +64,7 @@ export class ProductsService {
   }
 
   async getProductBySlug(slug: string) {
-    return this.prisma.product.findUnique({
+    const product = await this.prisma.product.findUnique({
       where: { slug },
       include: {
         reviews: {
@@ -59,6 +78,20 @@ export class ProductsService {
         affiliateLinks: true,
       },
     });
+
+    if (!product) {
+      return null;
+    }
+
+    const affiliateCommission =
+      await this.prisma.affiliateCommission.findUnique({
+        where: { productId: product.id },
+      });
+
+    return {
+      ...product,
+      commissionPercentage: affiliateCommission?.percentage,
+    };
   }
 
   async getProductById(id: string) {

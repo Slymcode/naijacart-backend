@@ -23,6 +23,10 @@ export class CreateProductDto {
   @IsNumber()
   comparePrice?: number;
 
+  @IsOptional()
+  @IsNumber()
+  commissionPercentage?: number;
+
   @IsNumber()
   cost: number;
 

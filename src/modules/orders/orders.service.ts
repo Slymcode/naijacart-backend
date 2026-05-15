@@ -48,10 +48,10 @@ export class OrdersService {
       });
     }
 
-    // Calculate shipping and tax
-    const shippingFee = 5000; // ₦5000 flat shipping
-    const tax = subtotal * 0.1; // 10% tax
-    const total = subtotal + shippingFee + tax;
+    // Calculate shipping and remove VAT
+    const shippingFee = 3500; // ₦3500 flat shipping
+    const tax = 0;
+    const total = subtotal + shippingFee;
 
     // Create order
     const order = await this.prisma.order.create({
@@ -92,18 +92,26 @@ export class OrdersService {
           },
         });
 
-        // Create commission record
-        const commissionPercentage = 10; // Default 10%
-        const commissionAmount = total * (commissionPercentage / 100);
+        const affiliateCommission =
+          await this.prisma.affiliateCommission.findUnique({
+            where: { productId: affiliateLink.productId },
+          });
 
-        await this.prisma.commission.create({
-          data: {
-            affiliateId: affiliateLink.affiliateId,
-            orderId: order.id,
-            amount: commissionAmount,
-            percentage: commissionPercentage,
-          },
-        });
+        const commissionPercentage = affiliateCommission?.percentage;
+
+        if (commissionPercentage && commissionPercentage > 0) {
+          const commissionAmount =
+            Math.round(subtotal * (commissionPercentage / 100) * 100) / 100;
+
+          await this.prisma.commission.create({
+            data: {
+              affiliateId: affiliateLink.affiliateId,
+              orderId: order.id,
+              amount: commissionAmount,
+              percentage: commissionPercentage,
+            },
+          });
+        }
       }
     }
 
