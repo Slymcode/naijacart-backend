@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateReviewDto, UpdateReviewDto } from "./dto/review.dto";
@@ -22,22 +23,35 @@ export class ReviewsService {
       throw new NotFoundException("Product not found");
     }
 
-    // Check if user has purchased this product
+    // Check if user has purchased this product and completed payment
     const order = await this.prisma.order.findFirst({
       where: {
         userId,
         items: {
           some: { productId },
         },
-        status: "DELIVERED",
         paymentStatus: "COMPLETED",
       },
     });
 
     if (!order) {
       throw new ForbiddenException(
-        "Only customers who purchased and received this product can leave a review.",
+        "Only customers who purchased this product with completed payment can leave a review.",
       );
+    }
+
+    // Prevent duplicate review for same product by same user
+    const existingReview = await this.prisma.review.findUnique({
+      where: {
+        userId_productId: {
+          userId,
+          productId,
+        },
+      },
+    });
+
+    if (existingReview) {
+      throw new BadRequestException("You have already reviewed this product.");
     }
 
     // Create review
@@ -87,7 +101,6 @@ export class ReviewsService {
     const order = await this.prisma.order.findFirst({
       where: {
         userId,
-        status: "DELIVERED",
         paymentStatus: "COMPLETED",
         items: {
           some: { productId },

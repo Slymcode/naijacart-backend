@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Request,
 } from "@nestjs/common";
 import { ProductsService } from "./products.service";
 import { CreateProductDto, UpdateProductDto } from "./dto/product.dto";
@@ -38,6 +39,15 @@ export class ProductsController {
     return this.productsService.getProductsByCategory(category);
   }
 
+  @Get("owner")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Get products owned by current user or all products for admin",
+  })
+  async getOwnerProducts(@Request() req) {
+    return this.productsService.getProductsForUser(req.user.id, req.user.role);
+  }
+
   @Get(":slug")
   @ApiOperation({ summary: "Get product by slug" })
   async getBySlug(@Param("slug") slug: string) {
@@ -48,26 +58,33 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(["ADMIN"])
   @ApiOperation({ summary: "Create product (Admin only)" })
-  async createProduct(@Body() createProductDto: CreateProductDto) {
-    return this.productsService.createProduct(createProductDto);
+  async createProduct(
+    @Request() req,
+    @Body() createProductDto: CreateProductDto,
+  ) {
+    return this.productsService.createProduct(req.user.id, createProductDto);
   }
 
   @Put(":id")
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(["ADMIN"])
-  @ApiOperation({ summary: "Update product (Admin only)" })
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Update product (Admin or owner)" })
   async updateProduct(
+    @Request() req,
     @Param("id") id: string,
     @Body() updateProductDto: UpdateProductDto,
   ) {
-    return this.productsService.updateProduct(id, updateProductDto);
+    return this.productsService.updateProduct(
+      id,
+      req.user.id,
+      req.user.role,
+      updateProductDto,
+    );
   }
 
   @Delete(":id")
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(["ADMIN"])
-  @ApiOperation({ summary: "Delete product (Admin only)" })
-  async deleteProduct(@Param("id") id: string) {
-    return this.productsService.deleteProduct(id);
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Delete product (Admin or owner)" })
+  async deleteProduct(@Request() req, @Param("id") id: string) {
+    return this.productsService.deleteProduct(id, req.user.id, req.user.role);
   }
 }
