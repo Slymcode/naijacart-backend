@@ -130,11 +130,29 @@ export class ProductsService {
       );
     }
 
-    return this.prisma.product.update({
+    const { commissionPercentage, ...productData } = data as any;
+
+    const updatedProduct = await this.prisma.product.update({
       where: { id },
-      data,
+      data: productData,
       include: { productMetrics: true },
     });
+
+    if (commissionPercentage !== undefined && commissionPercentage !== null) {
+      const roundedPercentage = Math.round(commissionPercentage * 100) / 100;
+      await this.prisma.affiliateCommission.upsert({
+        where: { productId: updatedProduct.id },
+        create: {
+          productId: updatedProduct.id,
+          percentage: roundedPercentage,
+        },
+        update: {
+          percentage: roundedPercentage,
+        },
+      });
+    }
+
+    return updatedProduct;
   }
 
   async deleteProduct(id: string, userId: string, userRole: string) {
@@ -183,11 +201,28 @@ export class ProductsService {
       where.isActive = true;
     }
 
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where,
       orderBy: { createdAt: "desc" },
       include: { productMetrics: true, owner: true },
     });
+
+    if (products.length === 0) {
+      return products;
+    }
+
+    const commissions = await this.prisma.affiliateCommission.findMany({
+      where: {
+        productId: { in: products.map((product) => product.id) },
+      },
+    });
+
+    return products.map((product) => ({
+      ...product,
+      commissionPercentage: commissions.find(
+        (commission) => commission.productId === product.id,
+      )?.percentage,
+    }));
   }
 
   async getFeaturedProducts(limit = 10) {

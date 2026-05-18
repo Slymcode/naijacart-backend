@@ -36,6 +36,32 @@ export class AddAddressDto {
   isDefault?: boolean;
 }
 
+export class UpdateAddressDto {
+  @IsOptional()
+  @IsString()
+  street?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  state?: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  zipCode?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+}
+
 export class UserProfileResponseDto {
   id: string;
   email: string;
