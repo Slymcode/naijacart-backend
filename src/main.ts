@@ -6,7 +6,7 @@ import { GlobalExceptionFilter } from "./common/filters/http-exception.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const logger = new Logger("NaijaCart");
+  const logger = new Logger("SellRush");
 
   // Enable CORS
   app.enableCors({
@@ -33,7 +33,7 @@ async function bootstrap() {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle("NaijaCart API")
+    .setTitle("SellRush API")
     .setDescription("E-commerce platform with affiliate marketing system")
     .setVersion("1.0.0")
     .addBearerAuth(
@@ -47,7 +47,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  logger.log(`NaijaCart API running on http://localhost:${port}`);
+  logger.log(`SellRush API running on http://localhost:${port}`);
   logger.log(`API Documentation: http://localhost:${port}/api-docs`);
 }
 

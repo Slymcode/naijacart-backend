@@ -1,8 +1,8 @@
 {
-  "name": "naijacart-backend",
+  "name": "sellrush-backend",
   "version": "1.0.0",
-  "description": "NaijaCart - E-commerce platform with affiliate marketing",
-  "author": "NaijaCart Team",
+  "description": "SellRush - E-commerce platform with affiliate marketing",
+  "author": "SellRush Team",
   "private": true,
   "license": "MIT",
   "prisma": {
