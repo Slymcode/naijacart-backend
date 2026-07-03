@@ -9,15 +9,55 @@ export class CartService {
   async getCart(userId: string) {
     const items = await this.prisma.cartItem.findMany({
       where: { userId },
-      include: { product: true },
+      include: {
+        product: {
+          include: {
+            seller: {
+              select: {
+                id: true,
+                handle: true,
+                businessName: true,
+                logo: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
-    );
+    const grouped: Record<string, any> = {};
+    let subtotal = 0;
 
-    return { items, subtotal };
+    for (const it of items) {
+      const sellerId = it.product?.seller?.id || "__marketplace";
+      if (!grouped[sellerId]) {
+        grouped[sellerId] = {
+          seller: it.product?.seller
+            ? {
+                id: it.product.seller.id,
+                handle: it.product.seller.handle,
+                businessName: it.product.seller.businessName,
+                logo: it.product.seller.logo,
+              }
+            : null,
+          items: [],
+          subtotal: 0,
+        };
+      }
+
+      const lineTotal = it.price * it.quantity;
+      grouped[sellerId].items.push({ ...it });
+      grouped[sellerId].subtotal += lineTotal;
+      subtotal += lineTotal;
+    }
+
+    // Convert grouped map to array for deterministic ordering
+    const sellers = Object.keys(grouped).map((k) => ({
+      sellerId: k,
+      ...grouped[k],
+    }));
+
+    return { sellers, subtotal };
   }
 
   async addToCart(userId: string, addToCartDto: AddToCartDto) {
@@ -32,15 +72,20 @@ export class CartService {
       throw new NotFoundException("Product not found");
     }
 
+    if (product.stock < quantity) {
+      throw new NotFoundException("Insufficient stock");
+    }
+
     // Check if item already in cart
     const existingItem = await this.prisma.cartItem.findUnique({
       where: { userId_productId: { userId, productId } },
     });
 
     if (existingItem) {
-      return this.updateCartItem(existingItem.id, {
-        quantity: existingItem.quantity + quantity,
-      });
+      const newQty = existingItem.quantity + quantity;
+      if (product.stock < newQty)
+        throw new NotFoundException("Insufficient stock");
+      return this.updateCartItem(existingItem.id, { quantity: newQty });
     }
 
     // Add new item
@@ -64,6 +109,15 @@ export class CartService {
     if (quantity === 0) {
       return this.removeFromCart(cartItemId);
     }
+
+    // Ensure stock availability
+    const item = await this.prisma.cartItem.findUnique({
+      where: { id: cartItemId },
+      include: { product: true },
+    });
+    if (!item) throw new NotFoundException("Cart item not found");
+    if (item.product.stock < quantity)
+      throw new NotFoundException("Insufficient stock");
 
     return this.prisma.cartItem.update({
       where: { id: cartItemId },

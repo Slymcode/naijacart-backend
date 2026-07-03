@@ -93,6 +93,16 @@ export class AdminService {
     });
   }
 
+  async getPlatformAccount() {
+    let account = await this.prisma.platformAccount.findFirst();
+    if (!account) {
+      account = await this.prisma.platformAccount.create({
+        data: { balance: 0 },
+      });
+    }
+    return account;
+  }
+
   async getWithdrawalRequests() {
     return this.prisma.withdrawalRequest.findMany({
       include: {

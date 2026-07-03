@@ -147,27 +147,74 @@ export class PaymentService {
             pendingEarnings: {
               increment: totalCommission,
             },
+            totalEarnings: {
+              increment: totalCommission,
+            },
           },
         });
       }
 
-      for (const item of order.items ?? []) {
-        await this.prisma.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              decrement: item.quantity,
+      // Distribute payment splits: credit platform account and seller wallets
+      const splits = await this.prisma.paymentSplit.findMany({
+        where: { orderId },
+      });
+
+      // Ensure platform account exists
+      let platform = await this.prisma.platformAccount.findFirst();
+      if (!platform) {
+        platform = await this.prisma.platformAccount.create({
+          data: { balance: 0 },
+        });
+      }
+
+      for (const split of splits) {
+        if (split.recipientType === "PLATFORM") {
+          await this.prisma.platformAccount.update({
+            where: { id: platform.id },
+            data: { balance: { increment: split.amount } },
+          });
+          await this.prisma.walletTransaction.create({
+            data: {
+              platformId: platform.id,
+              type: "CREDIT",
+              amount: split.amount,
+              metadata: { orderId },
             },
-          },
+          });
+        } else if (split.recipientType === "SELLER" && split.sellerId) {
+          let wallet = await this.prisma.sellerWallet.findUnique({
+            where: { sellerId: split.sellerId },
+          });
+          if (!wallet) {
+            wallet = await this.prisma.sellerWallet.create({
+              data: { sellerId: split.sellerId, balance: 0, pending: 0 },
+            });
+          }
+
+          await this.prisma.sellerWallet.update({
+            where: { id: wallet.id },
+            data: { balance: { increment: split.amount } },
+          });
+          await this.prisma.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              type: "CREDIT",
+              amount: split.amount,
+              metadata: { orderId },
+            },
+          });
+        }
+
+        await this.prisma.paymentSplit.update({
+          where: { id: split.id },
+          data: { status: "PAID" },
         });
       }
 
       await this.prisma.cartItem.deleteMany({
         where: {
           userId: order.userId,
-          productId: {
-            in: order.items.map((item) => item.productId),
-          },
+          productId: { in: order.items.map((item) => item.productId) },
         },
       });
 

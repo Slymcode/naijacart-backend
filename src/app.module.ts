@@ -12,6 +12,8 @@ import { PaymentModule } from "./modules/payment/payment.module";
 import { AdminModule } from "./modules/admin/admin.module";
 import { ReviewsModule } from "./modules/reviews/reviews.module";
 import { SubscribersModule } from "./modules/subscribers/subscribers.module";
+import { SellersModule } from "./modules/sellers/sellers.module";
+import { UploadsModule } from "./modules/uploads/uploads.module";
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { SubscribersModule } from "./modules/subscribers/subscribers.module";
     AuthModule,
     UsersModule,
     ProductsModule,
+    SellersModule,
+    UploadsModule,
     CartModule,
     OrdersModule,
     AffiliateModule,

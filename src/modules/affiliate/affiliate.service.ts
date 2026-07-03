@@ -55,7 +55,7 @@ export class AffiliateService {
       where: { userId },
       include: {
         affiliateLinks: { include: { product: true } },
-        commissions: true,
+        commissions: { include: { product: true, order: true } },
       },
     });
 
@@ -118,7 +118,7 @@ export class AffiliateService {
       where: { userId },
       include: {
         affiliateLinks: { include: { product: true } },
-        commissions: true,
+        commissions: { include: { product: true, order: true } },
         referrals: { include: { order: true } },
         withdrawals: true,
       },
@@ -128,8 +128,31 @@ export class AffiliateService {
       throw new NotFoundException("Affiliate not found");
     }
 
+    const linkConversions = affiliate.affiliateLinks.reduce(
+      (map, link) => {
+        map[link.id] = 0;
+        return map;
+      },
+      {} as Record<string, number>,
+    );
+
+    affiliate.referrals.forEach((referral) => {
+      const link = affiliate.affiliateLinks.find(
+        (candidate) => candidate.code === referral.source,
+      );
+
+      if (link) {
+        linkConversions[link.id] = (linkConversions[link.id] || 0) + 1;
+      }
+    });
+
+    const linksWithConversions = affiliate.affiliateLinks.map((link) => ({
+      ...link,
+      conversions: linkConversions[link.id] || 0,
+    }));
+
     // Calculate stats
-    const totalClicks = affiliate.affiliateLinks.reduce(
+    const totalClicks = linksWithConversions.reduce(
       (sum, link) => sum + link.clicks,
       0,
     );
@@ -170,7 +193,7 @@ export class AffiliateService {
         conversionRate:
           totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0,
       },
-      links: affiliate.affiliateLinks,
+      links: linksWithConversions,
       recentReferrals: affiliate.referrals.slice(0, 10),
     };
   }
@@ -181,10 +204,16 @@ export class AffiliateService {
     });
 
     if (link) {
-      await this.prisma.affiliateLink.update({
-        where: { code: affiliateCode },
-        data: { clicks: link.clicks + 1 },
-      });
+      await Promise.all([
+        this.prisma.affiliateLink.update({
+          where: { code: affiliateCode },
+          data: { clicks: link.clicks + 1 },
+        }),
+        this.prisma.affiliate.update({
+          where: { id: link.affiliateId },
+          data: { totalClicks: { increment: 1 } },
+        }),
+      ]);
     }
 
     return link;

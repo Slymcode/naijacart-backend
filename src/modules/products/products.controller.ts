@@ -13,7 +13,6 @@ import {
 import { ProductsService } from "./products.service";
 import { CreateProductDto, UpdateProductDto } from "./dto/product.dto";
 import { JwtAuthGuard } from "../auth/jwt.guard";
-import { Roles, RolesGuard } from "../auth/roles.guard";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 
 @ApiTags("Products")
@@ -39,6 +38,12 @@ export class ProductsController {
     return this.productsService.getProductsByCategory(category);
   }
 
+  @Get("categories")
+  @ApiOperation({ summary: "Get distinct product categories" })
+  async getCategories() {
+    return this.productsService.getCategories();
+  }
+
   @Get("owner")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
@@ -55,8 +60,7 @@ export class ProductsController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(["ADMIN"])
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: "Create product (Admin only)" })
   async createProduct(
     @Request() req,

@@ -59,6 +59,7 @@ export class ReviewsService {
       data: {
         userId,
         productId,
+        sellerId: product.sellerId,
         rating,
         title,
         comment,
@@ -69,6 +70,10 @@ export class ReviewsService {
 
     // Update product metrics
     await this.updateProductMetrics(productId);
+
+    if (product.sellerId) {
+      await this.updateSellerRating(product.sellerId);
+    }
 
     return review;
   }
@@ -146,6 +151,15 @@ export class ReviewsService {
     // Update product metrics
     await this.updateProductMetrics(review.productId);
 
+    const product = await this.prisma.product.findUnique({
+      where: { id: review.productId },
+      select: { sellerId: true },
+    });
+
+    if (product?.sellerId) {
+      await this.updateSellerRating(product.sellerId);
+    }
+
     return updated;
   }
 
@@ -168,6 +182,15 @@ export class ReviewsService {
 
     // Update product metrics
     await this.updateProductMetrics(review.productId);
+
+    const product = await this.prisma.product.findUnique({
+      where: { id: review.productId },
+      select: { sellerId: true },
+    });
+
+    if (product?.sellerId) {
+      await this.updateSellerRating(product.sellerId);
+    }
 
     return { message: "Review deleted successfully" };
   }
@@ -194,6 +217,29 @@ export class ReviewsService {
         averageRating,
         reviewCount,
       },
+    });
+  }
+
+  private async updateSellerRating(sellerId: string) {
+    const sellerReviews = await this.prisma.review.findMany({
+      where: {
+        product: {
+          sellerId,
+        },
+      },
+      select: { rating: true },
+    });
+
+    const reviewCount = sellerReviews.length;
+    const averageRating =
+      reviewCount > 0
+        ? sellerReviews.reduce((sum, review) => sum + review.rating, 0) /
+          reviewCount
+        : 0;
+
+    await this.prisma.seller.update({
+      where: { id: sellerId },
+      data: { rating: averageRating },
     });
   }
 }

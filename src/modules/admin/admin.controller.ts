@@ -65,6 +65,14 @@ export class AdminController {
     return this.adminService.getAffiliateAnalytics();
   }
 
+  @Get("platform-account")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(["ADMIN"])
+  @ApiOperation({ summary: "Get platform account balance" })
+  async getPlatformAccount() {
+    return this.adminService.getPlatformAccount();
+  }
+
   @Get("withdrawals")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(["ADMIN"])

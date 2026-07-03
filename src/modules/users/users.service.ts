@@ -26,6 +26,14 @@ export class UsersService {
         role: true,
         customer: true,
         affiliate: true,
+        seller: {
+          select: {
+            id: true,
+            handle: true,
+            businessName: true,
+            status: true,
+          },
+        },
       },
     });
   }

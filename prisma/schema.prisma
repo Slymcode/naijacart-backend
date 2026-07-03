@@ -30,6 +30,7 @@ model User {
   reviews         Review[]
   withdrawals     WithdrawalRequest[]
   products        Product[]
+  seller          Seller?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -105,6 +106,11 @@ model Product {
   tags        String[] @default([])
   isActive    Boolean @default(true)
   isFeatured  Boolean @default(false)
+
+  // Seller relationship (new)
+  sellerId    String?
+  seller      Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  sellerHandle String?
 
   // Relations
   cartItems        CartItem[]
@@ -183,6 +189,7 @@ model Order {
   
   // Items
   items             OrderItem[]
+  paymentSplits     PaymentSplit[]
   
   // Timestamps
   createdAt DateTime @default(now())
@@ -220,8 +227,78 @@ model OrderItem {
   price     Float
   name      String
 
+  // Seller attribution for order line (new)
+  sellerId  String?
+  seller    Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Sellers / Vendors
+model Seller {
+  id           String   @id @default(cuid())
+  userId       String?  @unique
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName String
+  handle       String   @unique
+  slug         String   @unique
+  logo         String?
+  banner       String?
+  email        String?
+  phone        String?
+  address      String?
+  description  String?
+  socialLinks  Json?
+  policies     Json?
+  rating       Float?   @default(0)
+  isVerified   Boolean  @default(false)
+  status       String   @default("pending")
+
+  products     Product[]
+  orderItems   OrderItem[]
+  payoutRequests PayoutRequest[]
+  paymentSplits  PaymentSplit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([handle])
+  @@index([slug])
+}
+
+// Payouts and payment splits
+model PayoutRequest {
+  id         String   @id @default(cuid())
+  sellerId   String
+  seller     Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount     Float
+  currency   String   @default("NGN")
+  status     PayoutStatus @default(PENDING)
+  note       String?
+  processedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+model PaymentSplit {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sellerId  String
+  seller    Seller  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount    Float
+  currency  String  @default("NGN")
+
+  createdAt DateTime @default(now())
 }
 
 // Product Reviews

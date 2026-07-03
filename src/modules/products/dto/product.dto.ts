@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsArray,
   IsBoolean,
+  ArrayMinSize,
 } from "class-validator";
 
 export class CreateProductDto {
@@ -27,8 +28,9 @@ export class CreateProductDto {
   @IsNumber()
   commissionPercentage?: number;
 
+  @IsOptional()
   @IsNumber()
-  cost: number;
+  cost?: number;
 
   @IsNumber()
   stock: number;
@@ -36,9 +38,9 @@ export class CreateProductDto {
   @IsString()
   category: string;
 
-  @IsOptional()
   @IsArray()
-  images?: string[];
+  @ArrayMinSize(1)
+  images: string[];
 
   @IsOptional()
   @IsArray()

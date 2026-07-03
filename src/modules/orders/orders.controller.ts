@@ -47,7 +47,10 @@ export class OrdersController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: "Get order details" })
   async getOrder(@Param("id") id: string, @Request() req) {
-    return this.ordersService.getOrder(id, req.user.id);
+    // pass seller context if available on JWT
+    const sellerId =
+      req.user && req.user.sellerId ? req.user.sellerId : undefined;
+    return this.ordersService.getOrder(id, req.user.id, sellerId);
   }
 
   @Put(":id/status")

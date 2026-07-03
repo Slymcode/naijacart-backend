@@ -12,13 +12,24 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   async createProduct(userId: string, data: CreateProductDto) {
-    const { commissionPercentage, ...productData } = data as any;
+    const { commissionPercentage, cost, ...productData } = data as any;
+
+    // Attach seller info if user is a seller
+    const seller = await this.prisma.seller.findUnique({ where: { userId } });
+
+    const createData: any = {
+      ...productData,
+      ownerId: userId,
+      cost: cost ?? productData.price ?? 0,
+    };
+
+    if (seller) {
+      createData.sellerId = seller.id;
+      createData.sellerHandle = seller.handle;
+    }
 
     const product = await this.prisma.product.create({
-      data: {
-        ...productData,
-        ownerId: userId,
-      },
+      data: createData,
       include: { productMetrics: true },
     });
 
@@ -54,8 +65,12 @@ export class ProductsService {
       ];
     }
 
-    const skip = (filters?.page || 0) * (filters?.limit || 10);
-    const take = filters?.limit || 10;
+    const page = Number(filters?.page);
+    const limit = Number(filters?.limit);
+    const skip =
+      (Number.isInteger(page) ? page : 0) *
+      (Number.isInteger(limit) ? limit : 10);
+    const take = Number.isInteger(limit) ? limit : 10;
 
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -63,12 +78,33 @@ export class ProductsService {
         skip,
         take,
         orderBy: { createdAt: "desc" },
-        include: { productMetrics: true },
+        include: {
+          productMetrics: true,
+          seller: {
+            select: { id: true, handle: true, businessName: true, logo: true },
+          },
+        },
       }),
       this.prisma.product.count({ where }),
     ]);
 
-    return { data: products, total, page: filters?.page || 0 };
+    return { data: products, total, page: Number.isInteger(page) ? page : 0 };
+  }
+
+  async getCategories() {
+    const products = await this.prisma.product.findMany({
+      where: { isActive: true },
+      select: { category: true },
+      orderBy: { category: "asc" },
+    });
+
+    const categories = [
+      ...new Set(
+        products.map((product: any) => product.category).filter(Boolean),
+      ),
+    ];
+
+    return { data: categories };
   }
 
   async getProductBySlug(slug: string) {
@@ -84,6 +120,9 @@ export class ProductsService {
         },
         productMetrics: true,
         affiliateLinks: true,
+        seller: {
+          select: { id: true, handle: true, businessName: true, logo: true },
+        },
       },
     });
 
@@ -117,17 +156,24 @@ export class ProductsService {
   ) {
     const existing = await this.prisma.product.findUnique({
       where: { id },
-      select: { ownerId: true },
+      select: { ownerId: true, sellerId: true },
     });
 
     if (!existing) {
       throw new NotFoundException("Product not found");
     }
 
-    if (userRole !== "ADMIN" && existing.ownerId !== userId) {
-      throw new ForbiddenException(
-        "You do not have permission to update this product.",
-      );
+    if (userRole !== "ADMIN") {
+      // allow owner or seller to update
+      const seller = await this.prisma.seller.findUnique({ where: { userId } });
+      const isSellerOwner = seller
+        ? (existing as any).sellerId === seller.id
+        : false;
+      if (existing.ownerId !== userId && !isSellerOwner) {
+        throw new ForbiddenException(
+          "You do not have permission to update this product.",
+        );
+      }
     }
 
     const { commissionPercentage, ...productData } = data as any;
@@ -160,6 +206,7 @@ export class ProductsService {
       where: { id },
       select: {
         ownerId: true,
+        sellerId: true,
         cartItems: {
           select: { id: true },
           take: 1,
@@ -175,10 +222,16 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    if (userRole !== "ADMIN" && existing.ownerId !== userId) {
-      throw new ForbiddenException(
-        "You do not have permission to delete this product.",
-      );
+    if (userRole !== "ADMIN") {
+      const seller = await this.prisma.seller.findUnique({ where: { userId } });
+      const isSellerOwner = seller
+        ? (existing as any).sellerId === seller.id
+        : false;
+      if (existing.ownerId !== userId && !isSellerOwner) {
+        throw new ForbiddenException(
+          "You do not have permission to delete this product.",
+        );
+      }
     }
 
     if (existing.cartItems.length > 0 || existing.orderItems.length > 0) {
@@ -197,7 +250,12 @@ export class ProductsService {
     const where: any = {};
 
     if (userRole !== "ADMIN") {
-      where.ownerId = userId;
+      const seller = await this.prisma.seller.findUnique({ where: { userId } });
+      if (seller) {
+        where.OR = [{ sellerId: seller.id }, { ownerId: userId }];
+      } else {
+        where.ownerId = userId;
+      }
       where.isActive = true;
     }
 
@@ -229,6 +287,7 @@ export class ProductsService {
     return this.prisma.product.findMany({
       where: { isActive: true, isFeatured: true },
       take: limit,
+      orderBy: { createdAt: "desc" },
       include: { productMetrics: true },
     });
   }
@@ -237,6 +296,7 @@ export class ProductsService {
     return this.prisma.product.findMany({
       where: { isActive: true, category },
       take: limit,
+      orderBy: { createdAt: "desc" },
       include: { productMetrics: true },
     });
   }

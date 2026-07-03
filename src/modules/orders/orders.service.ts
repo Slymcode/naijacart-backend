@@ -45,6 +45,7 @@ export class OrdersService {
         quantity: item.quantity,
         price: product.price,
         name: product.name,
+        sellerId: product.sellerId || null,
       });
     }
 
@@ -92,6 +93,11 @@ export class OrdersService {
           },
         });
 
+        await this.prisma.affiliateLink.update({
+          where: { id: affiliateLink.id },
+          data: { conversions: { increment: 1 } },
+        });
+
         const affiliateCommission =
           await this.prisma.affiliateCommission.findUnique({
             where: { productId: affiliateLink.productId },
@@ -118,9 +124,12 @@ export class OrdersService {
     return order;
   }
 
-  async getOrder(orderId: string, userId?: string) {
+  async getOrder(orderId: string, userId?: string, sellerId?: string) {
     const where: any = { id: orderId };
-    if (userId) {
+
+    if (sellerId) {
+      where.OR = [{ userId }, { items: { some: { sellerId } } }];
+    } else if (userId) {
       where.userId = userId;
     }
 

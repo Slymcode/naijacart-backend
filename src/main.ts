@@ -1,5 +1,7 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
+import * as express from "express";
+import { join } from "path";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { GlobalExceptionFilter } from "./common/filters/http-exception.filter";
@@ -46,6 +48,9 @@ async function bootstrap() {
   SwaggerModule.setup("api-docs", app, document);
 
   const port = process.env.PORT || 3000;
+
+  // Serve uploaded public assets in dev
+  app.use("/public", express.static(join(process.cwd(), "public")));
   await app.listen(port);
   logger.log(`SellRush API running on http://localhost:${port}`);
   logger.log(`API Documentation: http://localhost:${port}/api-docs`);
