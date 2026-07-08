@@ -22,15 +22,15 @@ model User {
   isActive  Boolean  @default(true)
 
   // Relations
-  customer        Customer?
-  affiliate       Affiliate?
-  addresses       Address[]
-  orders          Order[]
-  cartItems       CartItem[]
-  reviews         Review[]
-  withdrawals     WithdrawalRequest[]
-  products        Product[]
-  seller          Seller?
+  customer    Customer?
+  affiliate   Affiliate?
+  addresses   Address[]
+  orders      Order[]
+  cartItems   CartItem[]
+  reviews     Review[]
+  withdrawals WithdrawalRequest[]
+  products    Product[]
+  seller      Seller?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -44,9 +44,9 @@ enum UserRole {
 
 // Customer-specific data
 model Customer {
-  id        String  @id @default(cuid())
-  userId    String  @unique
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String @id @default(cuid())
+  userId     String @unique
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   totalSpent Float  @default(0)
   orderCount Int    @default(0)
 
@@ -56,20 +56,20 @@ model Customer {
 
 // Affiliate-specific data
 model Affiliate {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  code            String   @unique
-  totalEarnings   Float    @default(0)
-  pendingEarnings Float    @default(0)
-  totalClicks     Int      @default(0)
-  totalConversions Int     @default(0)
+  id               String @id @default(cuid())
+  userId           String @unique
+  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code             String @unique
+  totalEarnings    Float  @default(0)
+  pendingEarnings  Float  @default(0)
+  totalClicks      Int    @default(0)
+  totalConversions Int    @default(0)
 
   // Relations
-  affiliateLinks     AffiliateLink[]
-  commissions        Commission[]
-  referrals          Referral[]
-  withdrawals        WithdrawalRequest[]
+  affiliateLinks AffiliateLink[]
+  commissions    Commission[]
+  referrals      Referral[]
+  withdrawals    WithdrawalRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -93,33 +93,33 @@ model Address {
 
 // Products
 model Product {
-  id          String  @id @default(cuid())
-  name        String
-  slug        String  @unique
-  description String
-  price       Float
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  description  String
+  price        Float
   comparePrice Float?
-  cost        Float
-  stock       Int     @default(0)
-  category    String
-  images      String[] @default([]) // Array of image URLs
-  tags        String[] @default([])
-  isActive    Boolean @default(true)
-  isFeatured  Boolean @default(false)
+  cost         Float
+  stock        Int      @default(0)
+  category     String
+  images       String[] @default([]) // Array of image URLs
+  tags         String[] @default([])
+  isActive     Boolean  @default(true)
+  isFeatured   Boolean  @default(false)
 
   // Seller relationship (new)
-  sellerId    String?
-  seller      Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  sellerId     String?
+  seller       Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
   sellerHandle String?
 
   // Relations
-  cartItems        CartItem[]
-  orderItems       OrderItem[]
-  ownerId          String?
-  owner            User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  reviews          Review[]
-  affiliateLinks   AffiliateLink[]
-  productMetrics   ProductMetric?
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  ownerId        String?
+  owner          User?           @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  reviews        Review[]
+  affiliateLinks AffiliateLink[]
+  productMetrics ProductMetric?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -130,14 +130,14 @@ model Product {
 
 // Product metrics for analytics
 model ProductMetric {
-  id              String  @id @default(cuid())
-  productId       String  @unique
-  product         Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  totalViews      Int     @default(0)
-  totalOrders     Int     @default(0)
-  totalRevenue    Float   @default(0)
-  averageRating   Float   @default(0)
-  reviewCount     Int     @default(0)
+  id            String  @id @default(cuid())
+  productId     String  @unique
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  totalViews    Int     @default(0)
+  totalOrders   Int     @default(0)
+  totalRevenue  Float   @default(0)
+  averageRating Float   @default(0)
+  reviewCount   Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -161,36 +161,36 @@ model CartItem {
 
 // Orders
 model Order {
-  id                String        @id @default(cuid())
-  userId            String
-  user              User          @relation(fields: [userId], references: [id])
-  orderNumber       String        @unique
-  status            OrderStatus   @default(PENDING)
-  paymentStatus     PaymentStatus @default(PENDING)
-  paymentReference  String?       @unique // Paystack reference
-  
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id])
+  orderNumber      String        @unique
+  status           OrderStatus   @default(PENDING)
+  paymentStatus    PaymentStatus @default(PENDING)
+  paymentReference String?       @unique // Paystack reference
+
   // Affiliate tracking
-  affiliateId       String?
-  referral          Referral?
-  
+  affiliateId String?
+  referral    Referral?
+
   // Shipping
-  shippingAddress   String
-  shippingCity      String
-  shippingState     String
-  shippingCountry   String
-  shippingZipCode   String?
-  
+  shippingAddress String
+  shippingCity    String
+  shippingState   String
+  shippingCountry String
+  shippingZipCode String?
+
   // Pricing
-  subtotal          Float
-  shippingFee       Float @default(0)
-  tax               Float @default(0)
-  discount          Float @default(0)
-  total             Float
-  
+  subtotal    Float
+  shippingFee Float @default(0)
+  tax         Float @default(0)
+  discount    Float @default(0)
+  total       Float
+
   // Items
-  items             OrderItem[]
-  paymentSplits     PaymentSplit[]
-  
+  items         OrderItem[]
+  paymentSplits PaymentSplit[]
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -228,8 +228,8 @@ model OrderItem {
   name      String
 
   // Seller attribution for order line (new)
-  sellerId  String?
-  seller    Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  sellerId String?
+  seller   Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -237,12 +237,12 @@ model OrderItem {
 
 // Sellers / Vendors
 model Seller {
-  id           String   @id @default(cuid())
-  userId       String?  @unique
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String  @id @default(cuid())
+  userId       String? @unique
+  user         User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName String
-  handle       String   @unique
-  slug         String   @unique
+  handle       String  @unique
+  slug         String  @unique
   logo         String?
   banner       String?
   email        String?
@@ -251,17 +251,20 @@ model Seller {
   description  String?
   socialLinks  Json?
   policies     Json?
-  rating       Float?   @default(0)
-  isVerified   Boolean  @default(false)
-  status       String   @default("pending")
+  rating       Float?  @default(0)
+  isVerified   Boolean @default(false)
+  status       String  @default("pending")
 
-  products     Product[]
-  orderItems   OrderItem[]
+  products       Product[]
+  orderItems     OrderItem[]
   payoutRequests PayoutRequest[]
   paymentSplits  PaymentSplit[]
+  withdrawals    WithdrawalRequest[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  Review       Review[]
+  SellerWallet SellerWallet[]
 
   @@index([handle])
   @@index([slug])
@@ -269,13 +272,13 @@ model Seller {
 
 // Payouts and payment splits
 model PayoutRequest {
-  id         String   @id @default(cuid())
-  sellerId   String
-  seller     Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  amount     Float
-  currency   String   @default("NGN")
-  status     PayoutStatus @default(PENDING)
-  note       String?
+  id          String       @id @default(cuid())
+  sellerId    String
+  seller      Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount      Float
+  currency    String       @default("NGN")
+  status      PayoutStatus @default(PENDING)
+  note        String?
   processedBy String?
 
   createdAt DateTime @default(now())
@@ -290,27 +293,31 @@ enum PayoutStatus {
 }
 
 model PaymentSplit {
-  id        String  @id @default(cuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  sellerId  String
-  seller    Seller  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  amount    Float
-  currency  String  @default("NGN")
+  id            String             @id @default(cuid())
+  orderId       String
+  order         Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sellerId      String?
+  seller        Seller?            @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount        Float
+  currency      String             @default("NGN")
+  recipientType RecipientType      @default(SELLER)
+  status        PaymentSplitStatus @default(PENDING)
 
   createdAt DateTime @default(now())
 }
 
 // Product Reviews
 model Review {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  rating    Int // 1-5
-  title     String
-  comment   String?
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sellerId   String?
+  seller     Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  rating     Int // 1-5
+  title      String
+  comment    String?
   isVerified Boolean @default(false)
 
   createdAt DateTime @default(now())
@@ -321,14 +328,14 @@ model Review {
 
 // Affiliate Links
 model AffiliateLink {
-  id        String  @id @default(cuid())
+  id          String    @id @default(cuid())
   affiliateId String
-  affiliate Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  code      String  @unique
-  clicks    Int     @default(0)
-  conversions Int  @default(0)
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  code        String    @unique
+  clicks      Int       @default(0)
+  conversions Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -338,12 +345,12 @@ model AffiliateLink {
 
 // Referral tracking (links between orders and affiliates)
 model Referral {
-  id        String  @id @default(cuid())
-  orderId   String  @unique
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  orderId     String    @unique
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   affiliateId String
-  affiliate Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  source    String // which link/code was used
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  source      String // which link/code was used
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -353,13 +360,13 @@ model Referral {
 
 // Commission tracking
 model Commission {
-  id        String  @id @default(cuid())
+  id          String           @id @default(cuid())
   affiliateId String
-  affiliate Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  orderId   String
-  amount    Float
-  percentage Float
-  status    CommissionStatus @default(PENDING)
+  affiliate   Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  orderId     String
+  amount      Float
+  percentage  Float
+  status      CommissionStatus @default(PENDING)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -377,14 +384,16 @@ enum CommissionStatus {
 
 // Withdrawal requests
 model WithdrawalRequest {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  affiliateId String
-  affiliate Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  amount    Float
-  status    WithdrawalStatus @default(PENDING)
-  bankName  String?
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  affiliateId   String
+  affiliate     Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  sellerId      String?
+  seller        Seller?          @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  amount        Float
+  status        WithdrawalStatus @default(PENDING)
+  bankName      String?
   accountNumber String?
   accountHolder String?
 
@@ -392,6 +401,7 @@ model WithdrawalRequest {
   updatedAt DateTime @updatedAt
 
   @@index([affiliateId])
+  @@index([sellerId])
   @@index([status])
 }
 
@@ -413,13 +423,64 @@ model AdminSetting {
   updatedAt DateTime @updatedAt
 }
 
+enum RecipientType {
+  SELLER
+  PLATFORM
+}
+
+enum PaymentSplitStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model SellerWallet {
+  id           String              @id @default(cuid())
+  sellerId     String
+  seller       Seller              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  balance      Float               @default(0)
+  pending      Float               @default(0)
+  transactions WalletTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WalletTransaction {
+  id         String                @id @default(cuid())
+  walletId   String?
+  wallet     SellerWallet?         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  platformId String?
+  type       WalletTransactionType
+  amount     Float
+  metadata   Json?
+
+  createdAt         DateTime         @default(now())
+  PlatformAccount   PlatformAccount? @relation(fields: [platformAccountId], references: [id])
+  platformAccountId String?
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+}
+
+model PlatformAccount {
+  id           String              @id @default(cuid())
+  balance      Float               @default(0)
+  transactions WalletTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
 // Affiliate commission configuration per product
 model AffiliateCommission {
-  id        String  @id @default(cuid())
-  productId String  @unique
-  percentage Float @default(10)
+  id          String  @id @default(cuid())
+  productId   String  @unique
+  percentage  Float   @default(10)
   fixedAmount Float?
-  isActive  Boolean @default(true)
+  isActive    Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

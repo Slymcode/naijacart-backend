@@ -6,9 +6,6 @@ export class CreateReviewDto {
   @Max(5)
   rating: number;
 
-  @IsString()
-  title: string;
-
   @IsOptional()
   @IsString()
   comment?: string;
@@ -26,17 +23,12 @@ export class UpdateReviewDto {
 
   @IsOptional()
   @IsString()
-  title?: string;
-
-  @IsOptional()
-  @IsString()
   comment?: string;
 }
 
 export class ReviewResponseDto {
   id: string;
   rating: number;
-  title: string;
   comment: string;
   isVerified: boolean;
   userId: string;

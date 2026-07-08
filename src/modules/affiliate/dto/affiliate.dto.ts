@@ -32,6 +32,10 @@ export class WithdrawalRequestDto {
 
   @IsOptional()
   @IsString()
+  sellerId?: string;
+
+  @IsOptional()
+  @IsString()
   bankName: string;
 
   @IsOptional()

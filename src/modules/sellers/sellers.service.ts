@@ -23,6 +23,15 @@ export class SellersService {
   }
 
   async createSeller(userId: string, data: CreateSellerDto) {
+    // Prevent creating multiple seller records for the same user
+    const existingForUser = await this.prisma.seller.findUnique({
+      where: { userId },
+    });
+    if (existingForUser) {
+      throw new BadRequestException(
+        "Seller account already exists for this user",
+      );
+    }
     const baseHandle =
       data.handle?.trim() || this.generateHandleFromName(data.businessName);
     let handle = baseHandle;
@@ -165,7 +174,16 @@ export class SellersService {
       ordersMap[it.orderId].items.push(it);
     }
 
-    const orders = Object.values(ordersMap);
+    const orders = Object.values(ordersMap).map((group) => {
+      const itemTotal = group.items.reduce(
+        (sum: number, item: any) => sum + item.price * item.quantity,
+        0,
+      );
+      return {
+        ...group,
+        sellerTotal: itemTotal + 3500,
+      };
+    });
     return { data: orders, total, page: Number.isInteger(page) ? page : 0 };
   }
 
@@ -173,22 +191,116 @@ export class SellersService {
     const seller = await this.prisma.seller.findUnique({ where: { userId } });
     if (!seller) return null;
 
-    const salesAgg = await this.prisma.orderItem.aggregate({
-      where: { sellerId: seller.id },
-      _sum: { price: true },
-      _count: { id: true },
-    });
+    const [
+      salesAgg,
+      recentOrders,
+      topProducts,
+      payoutRequests,
+      sellerProducts,
+    ] = await Promise.all([
+      this.prisma.orderItem.aggregate({
+        where: { sellerId: seller.id },
+        _sum: { price: true },
+        _count: { id: true },
+      }),
+      this.prisma.orderItem.findMany({
+        where: { sellerId: seller.id },
+        include: { order: true, product: true },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      this.prisma.product.findMany({
+        where: { sellerId: seller.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      this.prisma.payoutRequest.findMany({
+        where: { sellerId: seller.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      this.prisma.product.findMany({
+        where: { sellerId: seller.id },
+        select: { id: true },
+      }),
+    ]);
 
-    const topProducts = await this.prisma.product.findMany({
-      where: { sellerId: seller.id },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-    });
+    const sellerProductIds = sellerProducts.map((product: any) => product.id);
+    const affiliateIds = sellerProductIds.length
+      ? (
+          await this.prisma.affiliateLink.findMany({
+            where: { productId: { in: sellerProductIds } },
+            select: { affiliateId: true },
+          })
+        ).map((link: any) => link.affiliateId)
+      : [];
+
+    const pendingAffiliatePayouts = affiliateIds.length
+      ? (
+          await this.prisma.withdrawalRequest.findMany({
+            where: {
+              affiliateId: { in: affiliateIds },
+              status: "PENDING",
+            },
+          })
+        ).reduce((sum, item) => sum + item.amount, 0)
+      : 0;
 
     return {
       totalSales: salesAgg._sum.price || 0,
       totalOrders: salesAgg._count.id || 0,
       topProducts,
+      recentOrderItems: recentOrders,
+      payoutRequests,
+      pendingAffiliatePayouts,
+    };
+  }
+
+  async getAffiliateLinksForSeller(userId: string, filters: any = {}) {
+    const seller = await this.prisma.seller.findUnique({ where: { userId } });
+    if (!seller) return { data: [], total: 0, page: 0 };
+
+    const page = Number(filters?.page);
+    const limit = Number(filters?.limit);
+    const skip =
+      (Number.isInteger(page) ? page : 0) *
+      (Number.isInteger(limit) ? limit : 20);
+    const take = Number.isInteger(limit) ? limit : 20;
+
+    const sellerProducts = await this.prisma.product.findMany({
+      where: { sellerId: seller.id },
+      select: { id: true },
+    });
+    const productIds = sellerProducts.map((product: any) => product.id);
+    if (productIds.length === 0) {
+      return { data: [], total: 0, page: Number.isInteger(page) ? page : 0 };
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.affiliateLink.findMany({
+        where: { productId: { in: productIds } },
+        include: {
+          product: true,
+          affiliate: { include: { user: true } },
+        },
+        skip,
+        take,
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.affiliateLink.count({
+        where: { productId: { in: productIds } },
+      }),
+    ]);
+
+    return {
+      data: data.map((link: any) => ({
+        ...link,
+        affiliateName: link.affiliate?.user
+          ? `${link.affiliate.user.firstName} ${link.affiliate.user.lastName}`
+          : undefined,
+      })),
+      total,
+      page: Number.isInteger(page) ? page : 0,
     };
   }
 
@@ -282,6 +394,85 @@ export class SellersService {
     return this.prisma.payoutRequest.update({
       where: { id },
       data: { status: status as any, processedBy },
+    });
+  }
+
+  async getAffiliatePayoutRequestsForSeller(userId: string) {
+    const seller = await this.prisma.seller.findUnique({ where: { userId } });
+    if (!seller) return [];
+
+    const sellerProducts = await this.prisma.product.findMany({
+      where: { sellerId: seller.id },
+      select: { id: true, name: true },
+    });
+
+    const productIds = sellerProducts.map((product: any) => product.id);
+
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const affiliateLinks = await this.prisma.affiliateLink.findMany({
+      where: { productId: { in: productIds } },
+      include: { product: true },
+    });
+
+    const withdrawals = await this.prisma.withdrawalRequest.findMany({
+      where: {
+        affiliateId: {
+          in: affiliateLinks.map((link: any) => link.affiliateId),
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      include: { affiliate: true, user: true },
+    });
+
+    return withdrawals.map((withdrawal: any) => ({
+      ...withdrawal,
+      relatedProducts: affiliateLinks
+        .filter((link: any) => link.affiliateId === withdrawal.affiliateId)
+        .map((link: any) => link.product),
+    }));
+  }
+
+  async updateAffiliateWithdrawalStatusForSeller(
+    userId: string,
+    withdrawalId: string,
+    status: string,
+  ) {
+    const seller = await this.prisma.seller.findUnique({ where: { userId } });
+    if (!seller) throw new NotFoundException("Seller not found");
+
+    const sellerProducts = await this.prisma.product.findMany({
+      where: { sellerId: seller.id },
+      select: { id: true },
+    });
+    const productIds = sellerProducts.map((p: any) => p.id);
+
+    if (productIds.length === 0) {
+      throw new BadRequestException("No products for seller");
+    }
+
+    const affiliateLinks = await this.prisma.affiliateLink.findMany({
+      where: { productId: { in: productIds } },
+    });
+    const allowedAffiliateIds = new Set(
+      affiliateLinks.map((l: any) => l.affiliateId),
+    );
+
+    const withdrawal = await this.prisma.withdrawalRequest.findUnique({
+      where: { id: withdrawalId },
+    });
+    if (!withdrawal)
+      throw new NotFoundException("Withdrawal request not found");
+
+    if (!allowedAffiliateIds.has(withdrawal.affiliateId)) {
+      throw new ForbiddenException("Not authorized to manage this withdrawal");
+    }
+
+    return this.prisma.withdrawalRequest.update({
+      where: { id: withdrawalId },
+      data: { status: status as any },
     });
   }
 }

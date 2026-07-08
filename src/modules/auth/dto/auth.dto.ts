@@ -34,6 +34,12 @@ export class AuthResponseDto {
     lastName: string;
     role: string;
     isActive: boolean;
+    seller?: {
+      id: string;
+      handle: string;
+      businessName: string;
+      status?: string;
+    };
   };
   accessToken: string;
 }

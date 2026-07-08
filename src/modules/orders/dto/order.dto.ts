@@ -15,6 +15,10 @@ export class CreateOrderItemDto {
 
   @IsNumber()
   quantity: number;
+
+  @IsOptional()
+  @IsString()
+  affiliateCode?: string;
 }
 
 export class CreateOrderDto {

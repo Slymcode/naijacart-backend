@@ -12,7 +12,7 @@ export class ReviewsService {
   constructor(private prisma: PrismaService) {}
 
   async createReview(userId: string, createReviewDto: CreateReviewDto) {
-    const { productId, rating, title, comment } = createReviewDto;
+    const { productId, rating, comment } = createReviewDto;
 
     // Verify product exists
     const product = await this.prisma.product.findUnique({
@@ -59,9 +59,8 @@ export class ReviewsService {
       data: {
         userId,
         productId,
-        sellerId: product.sellerId,
         rating,
-        title,
+        title: "",
         comment,
         isVerified: true,
       },

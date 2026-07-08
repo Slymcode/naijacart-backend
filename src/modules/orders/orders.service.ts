@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderDto, UpdateOrderStatusDto } from "./dto/order.dto";
-import { OrderStatus, PaymentStatus } from "@prisma/client";
+import { OrderStatus, PaymentStatus, PaymentSplitStatus } from "@prisma/client";
 
 @Injectable()
 export class OrdersService {
@@ -22,14 +22,20 @@ export class OrdersService {
       affiliateCode,
     } = createOrderDto;
 
-    // Fetch all products and calculate totals
+    const sellerGroups = new Map<string, Array<any>>();
     let subtotal = 0;
-    const orderItems = [];
+    const checkoutItems = [] as Array<any>;
+    const productCache = new Map<string, any>();
 
     for (const item of items) {
-      const product = await this.prisma.product.findUnique({
-        where: { id: item.productId },
-      });
+      let product = productCache.get(item.productId);
+
+      if (!product) {
+        product = await this.prisma.product.findUnique({
+          where: { id: item.productId },
+        });
+        productCache.set(item.productId, product);
+      }
 
       if (!product) {
         throw new NotFoundException(`Product ${item.productId} not found`);
@@ -39,23 +45,30 @@ export class OrdersService {
         throw new BadRequestException(`Insufficient stock for ${product.name}`);
       }
 
-      subtotal += product.price * item.quantity;
-      orderItems.push({
+      const sellerKey = product.sellerId || "marketplace";
+      const sellerItem = {
         productId: item.productId,
         quantity: item.quantity,
         price: product.price,
         name: product.name,
         sellerId: product.sellerId || null,
-      });
+      };
+
+      subtotal += product.price * item.quantity;
+      checkoutItems.push(sellerItem);
+
+      const groupItems = sellerGroups.get(sellerKey) || [];
+      groupItems.push(sellerItem);
+      sellerGroups.set(sellerKey, groupItems);
     }
 
-    // Calculate shipping and remove VAT
-    const shippingFee = 3500; // ₦3500 flat shipping
+    const SHIPPING_FEE_PER_SELLER = 3500;
+    const sellerCount = sellerGroups.size;
+    const shippingFee = SHIPPING_FEE_PER_SELLER * Math.max(1, sellerCount);
     const tax = 0;
     const total = subtotal + shippingFee;
 
-    // Create order
-    const order = await this.prisma.order.create({
+    const checkoutOrder = await this.prisma.order.create({
       data: {
         userId,
         orderNumber: `ORD-${Date.now()}`,
@@ -71,57 +84,146 @@ export class OrdersService {
         shippingCountry,
         shippingZipCode,
         items: {
-          create: orderItems,
+          create: checkoutItems,
         },
       },
       include: { items: true },
     });
 
-    // Handle affiliate referral if code provided
-    if (affiliateCode) {
+    const splitData = Array.from(sellerGroups.entries())
+      .filter(([, groupItems]) => groupItems.length > 0)
+      .map(([sellerKey, groupItems]) => ({
+        orderId: checkoutOrder.id,
+        sellerId: sellerKey === "marketplace" ? null : sellerKey,
+        amount: groupItems.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0,
+        ),
+        currency: "NGN",
+        status: PaymentSplitStatus.PENDING,
+      }));
+
+    if (splitData.length > 0) {
+      await this.prisma.paymentSplit.createMany({
+        data: splitData,
+      });
+    }
+
+    const affiliateEntries = [] as Array<{
+      affiliateId: string;
+      code: string;
+      amount: number;
+      percentage: number;
+    }>;
+
+    for (const item of items) {
+      const itemAffiliateCode = item.affiliateCode || affiliateCode;
+
+      if (!itemAffiliateCode) {
+        continue;
+      }
+
       const affiliateLink = await this.prisma.affiliateLink.findUnique({
-        where: { code: affiliateCode },
+        where: { code: itemAffiliateCode },
       });
 
-      if (affiliateLink) {
-        // Create referral record
-        await this.prisma.referral.create({
-          data: {
-            orderId: order.id,
-            affiliateId: affiliateLink.affiliateId,
-            source: affiliateCode,
-          },
+      if (!affiliateLink) {
+        continue;
+      }
+
+      const affiliateCommission =
+        await this.prisma.affiliateCommission.findUnique({
+          where: { productId: affiliateLink.productId },
         });
 
+      const commissionPercentage = affiliateCommission?.percentage;
+
+      if (!commissionPercentage || commissionPercentage <= 0) {
+        continue;
+      }
+
+      let product = productCache.get(item.productId);
+
+      if (!product) {
+        product = await this.prisma.product.findUnique({
+          where: { id: item.productId },
+        });
+        productCache.set(item.productId, product);
+      }
+
+      if (!product) {
+        continue;
+      }
+
+      const lineSubtotal = product.price * item.quantity;
+      const commissionAmount =
+        Math.round(lineSubtotal * (commissionPercentage / 100) * 100) / 100;
+
+      affiliateEntries.push({
+        affiliateId: affiliateLink.affiliateId,
+        code: itemAffiliateCode,
+        amount: commissionAmount,
+        percentage: commissionPercentage,
+      });
+    }
+
+    if (affiliateEntries.length > 0) {
+      const uniqueAffiliateEntries = new Map<
+        string,
+        (typeof affiliateEntries)[number]
+      >();
+
+      for (const affiliateEntry of affiliateEntries) {
+        const existingEntry = uniqueAffiliateEntries.get(
+          affiliateEntry.affiliateId,
+        );
+
+        if (existingEntry) {
+          existingEntry.amount += affiliateEntry.amount;
+          existingEntry.percentage = affiliateEntry.percentage;
+          continue;
+        }
+
+        uniqueAffiliateEntries.set(affiliateEntry.affiliateId, affiliateEntry);
+      }
+
+      const [firstAffiliateEntry] = Array.from(uniqueAffiliateEntries.values());
+
+      if (firstAffiliateEntry) {
+        await this.prisma.referral.create({
+          data: {
+            orderId: checkoutOrder.id,
+            affiliateId: firstAffiliateEntry.affiliateId,
+            source: firstAffiliateEntry.code,
+          },
+        });
+      }
+
+      for (const affiliateEntry of uniqueAffiliateEntries.values()) {
         await this.prisma.affiliateLink.update({
-          where: { id: affiliateLink.id },
+          where: { code: affiliateEntry.code },
           data: { conversions: { increment: 1 } },
         });
 
-        const affiliateCommission =
-          await this.prisma.affiliateCommission.findUnique({
-            where: { productId: affiliateLink.productId },
-          });
-
-        const commissionPercentage = affiliateCommission?.percentage;
-
-        if (commissionPercentage && commissionPercentage > 0) {
-          const commissionAmount =
-            Math.round(subtotal * (commissionPercentage / 100) * 100) / 100;
-
-          await this.prisma.commission.create({
-            data: {
-              affiliateId: affiliateLink.affiliateId,
-              orderId: order.id,
-              amount: commissionAmount,
-              percentage: commissionPercentage,
-            },
-          });
-        }
+        await this.prisma.commission.create({
+          data: {
+            affiliateId: affiliateEntry.affiliateId,
+            orderId: checkoutOrder.id,
+            amount: affiliateEntry.amount,
+            percentage: affiliateEntry.percentage,
+          },
+        });
       }
     }
 
-    return order;
+    return {
+      id: checkoutOrder.id,
+      paymentOrderId: checkoutOrder.id,
+      subtotal,
+      shippingFee,
+      tax,
+      total,
+    };
   }
 
   async getOrder(orderId: string, userId?: string, sellerId?: string) {
@@ -135,14 +237,30 @@ export class OrdersService {
 
     return this.prisma.order.findFirst({
       where,
-      include: { items: { include: { product: true } } },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: { seller: true },
+            },
+          },
+        },
+      },
     });
   }
 
   async getUserOrders(userId: string) {
     return this.prisma.order.findMany({
       where: { userId },
-      include: { items: { include: { product: true } } },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: { seller: true },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
   }

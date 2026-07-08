@@ -97,6 +97,14 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         isActive: user.isActive,
+        seller: user.seller
+          ? {
+              id: user.seller.id,
+              handle: user.seller.handle,
+              businessName: user.seller.businessName,
+              status: user.seller.status,
+            }
+          : undefined,
       },
       accessToken,
     };

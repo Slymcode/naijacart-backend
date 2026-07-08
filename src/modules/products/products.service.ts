@@ -111,13 +111,6 @@ export class ProductsService {
     const product = await this.prisma.product.findUnique({
       where: { slug },
       include: {
-        reviews: {
-          include: {
-            user: {
-              select: { firstName: true, lastName: true },
-            },
-          },
-        },
         productMetrics: true,
         affiliateLinks: true,
         seller: {
@@ -130,13 +123,23 @@ export class ProductsService {
       return null;
     }
 
-    const affiliateCommission =
-      await this.prisma.affiliateCommission.findUnique({
+    const [reviews, affiliateCommission] = await Promise.all([
+      this.prisma.review.findMany({
         where: { productId: product.id },
-      });
+        include: {
+          user: {
+            select: { firstName: true, lastName: true },
+          },
+        },
+      }),
+      this.prisma.affiliateCommission.findUnique({
+        where: { productId: product.id },
+      }),
+    ]);
 
     return {
       ...product,
+      reviews,
       commissionPercentage: affiliateCommission?.percentage,
     };
   }

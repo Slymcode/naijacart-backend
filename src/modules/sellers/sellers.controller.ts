@@ -1,4 +1,14 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Param, Query, Put } from "@nestjs/common";
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  Get,
+  Param,
+  Query,
+  Put,
+} from "@nestjs/common";
 import { SellersService } from "./sellers.service";
 import { CreateSellerDto } from "./dto/create-seller.dto";
 import { UpdateSellerDto } from "./dto/update-seller.dto";
@@ -14,7 +24,10 @@ export class SellersController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: "Register as a seller" })
-  async registerSeller(@Request() req, @Body() createSellerDto: CreateSellerDto) {
+  async registerSeller(
+    @Request() req,
+    @Body() createSellerDto: CreateSellerDto,
+  ) {
     return this.sellersService.createSeller(req.user.id, createSellerDto);
   }
 
@@ -75,8 +88,16 @@ export class SellersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(["ADMIN"])
   @ApiOperation({ summary: "Admin: update payout status" })
-  async adminUpdatePayoutStatus(@Param("id") id: string, @Body() body: any, @Request() req) {
-    return this.sellersService.adminUpdatePayoutStatus(id, body.status, req.user.id);
+  async adminUpdatePayoutStatus(
+    @Param("id") id: string,
+    @Body() body: any,
+    @Request() req,
+  ) {
+    return this.sellersService.adminUpdatePayoutStatus(
+      id,
+      body.status,
+      req.user.id,
+    );
   }
 
   @Get("/me/orders")
@@ -93,10 +114,53 @@ export class SellersController {
     return this.sellersService.getAnalyticsForSellerByUser(req.user.id);
   }
 
+  @Get("/me/affiliate-links")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Get affiliate links promoting your products" })
+  async getAffiliateLinks(@Request() req, @Query() query: any) {
+    return this.sellersService.getAffiliateLinksForSeller(req.user.id, query);
+  }
+
+  @Get("/me/affiliate-payout-requests")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Get affiliate payout requests tied to the seller's products",
+  })
+  async getAffiliatePayoutRequests(@Request() req) {
+    return this.sellersService.getAffiliatePayoutRequestsForSeller(req.user.id);
+  }
+
+  @Put("/me/affiliate-withdrawals/:id/status")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      "Seller: update affiliate withdrawal status for withdrawals tied to their products",
+  })
+  async updateAffiliateWithdrawalStatus(
+    @Request() req,
+    @Param("id") id: string,
+    @Body() body: any,
+  ) {
+    return this.sellersService.updateAffiliateWithdrawalStatusForSeller(
+      req.user.id,
+      id,
+      body.status,
+    );
+  }
+
   @Put(":id")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: "Update seller profile" })
-  async updateSeller(@Request() req, @Param("id") id: string, @Body() body: UpdateSellerDto) {
-    return this.sellersService.updateSeller(id, req.user.id, req.user.role, body);
+  async updateSeller(
+    @Request() req,
+    @Param("id") id: string,
+    @Body() body: UpdateSellerDto,
+  ) {
+    return this.sellersService.updateSeller(
+      id,
+      req.user.id,
+      req.user.role,
+      body,
+    );
   }
 }
