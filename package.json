@@ -15,7 +15,7 @@
     "start": "nest start -p tsconfig.build.json",
     "start:dev": "nest start --watch -p tsconfig.build.json",
     "start:debug": "nest start --debug --watch -p tsconfig.build.json",
-    "start:prod": "node dist/main",
+    "start:prod": "prisma migrate deploy && node dist/main",
     "lint": "eslint src/**/*.ts --fix",
     "test": "jest",
     "test:watch": "jest --watch",

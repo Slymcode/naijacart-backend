@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,28 +7,328 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User with role-based access control
 model User {
+  id          String              @id @default(cuid())
+  email       String              @unique
+  password    String
+  firstName   String?
+  lastName    String?
+  phone       String?
+  role        UserRole            @default(CUSTOMER)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  addresses   Address[]
+  affiliate   Affiliate?
+  cartItems   CartItem[]
+  customer    Customer?
+  orders      Order[]
+  products    Product[]
+  reviews     Review[]
+  seller      Seller?
+  withdrawals WithdrawalRequest[]
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  totalSpent Float    @default(0)
+  orderCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Affiliate {
+  id               String              @id @default(cuid())
+  userId           String              @unique
+  code             String              @unique
+  totalEarnings    Float               @default(0)
+  pendingEarnings  Float               @default(0)
+  totalClicks      Int                 @default(0)
+  totalConversions Int                 @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  affiliateLinks   AffiliateLink[]
+  commissions      Commission[]
+  referrals        Referral[]
+  withdrawals      WithdrawalRequest[]
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  street    String
+  city      String
+  state     String
+  country   String
+  zipCode   String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id             String          @id @default(cuid())
+  name           String
+  slug           String          @unique
+  description    String
+  price          Float
+  comparePrice   Float?
+  cost           Float
+  stock          Int             @default(0)
+  category       String
+  images         String[]        @default([])
+  tags           String[]        @default([])
+  isActive       Boolean         @default(true)
+  isFeatured     Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  ownerId        String?
+  sellerHandle   String?
+  sellerId       String?
+  affiliateLinks AffiliateLink[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  owner          User?           @relation(fields: [ownerId], references: [id])
+  seller         Seller?         @relation(fields: [sellerId], references: [id])
+  productMetrics ProductMetric?
+  reviews        Review[]
+
+  @@index([category])
+  @@index([slug])
+}
+
+model ProductMetric {
+  id            String   @id @default(cuid())
+  productId     String   @unique
+  totalViews    Int      @default(0)
+  totalOrders   Int      @default(0)
+  totalRevenue  Float    @default(0)
+  averageRating Float    @default(0)
+  reviewCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+model Order {
+  id               String         @id @default(cuid())
+  userId           String
+  orderNumber      String         @unique
+  status           OrderStatus    @default(PENDING)
+  paymentStatus    PaymentStatus  @default(PENDING)
+  paymentReference String?        @unique
+  affiliateId      String?
+  shippingAddress  String
+  shippingCity     String
+  shippingState    String
+  shippingCountry  String
+  shippingZipCode  String?
+  subtotal         Float
+  shippingFee      Float          @default(0)
+  tax              Float          @default(0)
+  discount         Float          @default(0)
+  total            Float
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  user             User           @relation(fields: [userId], references: [id])
+  items            OrderItem[]
+  paymentSplits    PaymentSplit[]
+  referral         Referral?
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sellerId  String?
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+  seller    Seller?  @relation(fields: [sellerId], references: [id])
+}
+
+model Seller {
+  id             String              @id @default(cuid())
+  userId         String?             @unique
+  businessName   String
+  handle         String              @unique
+  slug           String              @unique
+  logo           String?
+  banner         String?
+  email          String?
+  phone          String?
+  address        String?
+  description    String?
+  socialLinks    Json?
+  policies       Json?
+  rating         Float?              @default(0)
+  isVerified     Boolean             @default(false)
+  status         String              @default("pending")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  orderItems     OrderItem[]
+  paymentSplits  PaymentSplit[]
+  payoutRequests PayoutRequest[]
+  products       Product[]
+  user           User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  withdrawals    WithdrawalRequest[]
+
+  @@index([handle])
+  @@index([slug])
+}
+
+model PayoutRequest {
+  id          String       @id @default(cuid())
+  sellerId    String
+  amount      Float
+  currency    String       @default("NGN")
+  status      PayoutStatus @default(PENDING)
+  note        String?
+  processedBy String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  seller      Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+model PaymentSplit {
+  id        String   @id @default(cuid())
+  orderId   String
+  sellerId  String
+  amount    Float
+  currency  String   @default("NGN")
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seller    Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  rating     Int
+  title      String
+  comment    String?
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+model AffiliateLink {
+  id          String    @id @default(cuid())
+  affiliateId String
+  productId   String
+  code        String    @unique
+  clicks      Int       @default(0)
+  conversions Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([affiliateId, productId])
+}
+
+model Referral {
+  id          String    @id @default(cuid())
+  orderId     String    @unique
+  affiliateId String
+  source      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+}
+
+model Commission {
+  id          String           @id @default(cuid())
+  affiliateId String
+  orderId     String
+  amount      Float
+  percentage  Float
+  status      CommissionStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  affiliate   Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+  @@index([status])
+}
+
+model WithdrawalRequest {
+  id            String           @id @default(cuid())
+  userId        String
+  affiliateId   String
+  amount        Float
+  status        WithdrawalStatus @default(PENDING)
+  bankName      String?
+  accountNumber String?
+  accountHolder String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  sellerId      String?
+  affiliate     Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  seller        Seller?          @relation(fields: [sellerId], references: [id])
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+model AdminSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AffiliateCommission {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  percentage  Float    @default(10)
+  fixedAmount Float?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Subscriber {
   id        String   @id @default(cuid())
   email     String   @unique
-  password  String
-  firstName String?
-  lastName  String?
-  phone     String?
-  role      UserRole @default(CUSTOMER)
   isActive  Boolean  @default(true)
-
-  // Relations
-  customer    Customer?
-  affiliate   Affiliate?
-  addresses   Address[]
-  orders      Order[]
-  cartItems   CartItem[]
-  reviews     Review[]
-  withdrawals WithdrawalRequest[]
-  products    Product[]
-  seller      Seller?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -40,164 +337,6 @@ enum UserRole {
   ADMIN
   CUSTOMER
   AFFILIATE
-}
-
-// Customer-specific data
-model Customer {
-  id         String @id @default(cuid())
-  userId     String @unique
-  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  totalSpent Float  @default(0)
-  orderCount Int    @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Affiliate-specific data
-model Affiliate {
-  id               String @id @default(cuid())
-  userId           String @unique
-  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  code             String @unique
-  totalEarnings    Float  @default(0)
-  pendingEarnings  Float  @default(0)
-  totalClicks      Int    @default(0)
-  totalConversions Int    @default(0)
-
-  // Relations
-  affiliateLinks AffiliateLink[]
-  commissions    Commission[]
-  referrals      Referral[]
-  withdrawals    WithdrawalRequest[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Address for shipping
-model Address {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  street    String
-  city      String
-  state     String
-  country   String
-  zipCode   String?
-  isDefault Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Products
-model Product {
-  id           String   @id @default(cuid())
-  name         String
-  slug         String   @unique
-  description  String
-  price        Float
-  comparePrice Float?
-  cost         Float
-  stock        Int      @default(0)
-  category     String
-  images       String[] @default([]) // Array of image URLs
-  tags         String[] @default([])
-  isActive     Boolean  @default(true)
-  isFeatured   Boolean  @default(false)
-
-  // Seller relationship (new)
-  sellerId     String?
-  seller       Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
-  sellerHandle String?
-
-  // Relations
-  cartItems      CartItem[]
-  orderItems     OrderItem[]
-  ownerId        String?
-  owner          User?           @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  reviews        Review[]
-  affiliateLinks AffiliateLink[]
-  productMetrics ProductMetric?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([category])
-  @@index([slug])
-}
-
-// Product metrics for analytics
-model ProductMetric {
-  id            String  @id @default(cuid())
-  productId     String  @unique
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  totalViews    Int     @default(0)
-  totalOrders   Int     @default(0)
-  totalRevenue  Float   @default(0)
-  averageRating Float   @default(0)
-  reviewCount   Int     @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Shopping Cart
-model CartItem {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Float
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, productId])
-}
-
-// Orders
-model Order {
-  id               String        @id @default(cuid())
-  userId           String
-  user             User          @relation(fields: [userId], references: [id])
-  orderNumber      String        @unique
-  status           OrderStatus   @default(PENDING)
-  paymentStatus    PaymentStatus @default(PENDING)
-  paymentReference String?       @unique // Paystack reference
-
-  // Affiliate tracking
-  affiliateId String?
-  referral    Referral?
-
-  // Shipping
-  shippingAddress String
-  shippingCity    String
-  shippingState   String
-  shippingCountry String
-  shippingZipCode String?
-
-  // Pricing
-  subtotal    Float
-  shippingFee Float @default(0)
-  tax         Float @default(0)
-  discount    Float @default(0)
-  total       Float
-
-  // Items
-  items         OrderItem[]
-  paymentSplits PaymentSplit[]
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([status])
-  @@index([paymentStatus])
 }
 
 enum OrderStatus {
@@ -216,163 +355,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// Order Items
-model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Float
-  name      String
-
-  // Seller attribution for order line (new)
-  sellerId String?
-  seller   Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Sellers / Vendors
-model Seller {
-  id           String  @id @default(cuid())
-  userId       String? @unique
-  user         User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  businessName String
-  handle       String  @unique
-  slug         String  @unique
-  logo         String?
-  banner       String?
-  email        String?
-  phone        String?
-  address      String?
-  description  String?
-  socialLinks  Json?
-  policies     Json?
-  rating       Float?  @default(0)
-  isVerified   Boolean @default(false)
-  status       String  @default("pending")
-
-  products       Product[]
-  orderItems     OrderItem[]
-  payoutRequests PayoutRequest[]
-  paymentSplits  PaymentSplit[]
-  withdrawals    WithdrawalRequest[]
-
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  Review       Review[]
-  SellerWallet SellerWallet[]
-
-  @@index([handle])
-  @@index([slug])
-}
-
-// Payouts and payment splits
-model PayoutRequest {
-  id          String       @id @default(cuid())
-  sellerId    String
-  seller      Seller       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  amount      Float
-  currency    String       @default("NGN")
-  status      PayoutStatus @default(PENDING)
-  note        String?
-  processedBy String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 enum PayoutStatus {
   PENDING
   APPROVED
   REJECTED
   PAID
-}
-
-model PaymentSplit {
-  id            String             @id @default(cuid())
-  orderId       String
-  order         Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  sellerId      String?
-  seller        Seller?            @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  amount        Float
-  currency      String             @default("NGN")
-  recipientType RecipientType      @default(SELLER)
-  status        PaymentSplitStatus @default(PENDING)
-
-  createdAt DateTime @default(now())
-}
-
-// Product Reviews
-model Review {
-  id         String  @id @default(cuid())
-  userId     String
-  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId  String
-  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sellerId   String?
-  seller     Seller? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
-  rating     Int // 1-5
-  title      String
-  comment    String?
-  isVerified Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, productId])
-}
-
-// Affiliate Links
-model AffiliateLink {
-  id          String    @id @default(cuid())
-  affiliateId String
-  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  code        String    @unique
-  clicks      Int       @default(0)
-  conversions Int       @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([affiliateId, productId])
-}
-
-// Referral tracking (links between orders and affiliates)
-model Referral {
-  id          String    @id @default(cuid())
-  orderId     String    @unique
-  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  affiliateId String
-  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  source      String // which link/code was used
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([affiliateId])
-}
-
-// Commission tracking
-model Commission {
-  id          String           @id @default(cuid())
-  affiliateId String
-  affiliate   Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  orderId     String
-  amount      Float
-  percentage  Float
-  status      CommissionStatus @default(PENDING)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([affiliateId])
-  @@index([status])
 }
 
 enum CommissionStatus {
@@ -382,115 +369,10 @@ enum CommissionStatus {
   CANCELLED
 }
 
-// Withdrawal requests
-model WithdrawalRequest {
-  id            String           @id @default(cuid())
-  userId        String
-  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  affiliateId   String
-  affiliate     Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  sellerId      String?
-  seller        Seller?          @relation(fields: [sellerId], references: [id], onDelete: SetNull)
-  amount        Float
-  status        WithdrawalStatus @default(PENDING)
-  bankName      String?
-  accountNumber String?
-  accountHolder String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([affiliateId])
-  @@index([sellerId])
-  @@index([status])
-}
-
 enum WithdrawalStatus {
   PENDING
   APPROVED
   COMPLETED
   REJECTED
   CANCELLED
-}
-
-// Admin settings and configurations
-model AdminSetting {
-  id    String @id @default(cuid())
-  key   String @unique
-  value String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum RecipientType {
-  SELLER
-  PLATFORM
-}
-
-enum PaymentSplitStatus {
-  PENDING
-  PAID
-  CANCELLED
-}
-
-model SellerWallet {
-  id           String              @id @default(cuid())
-  sellerId     String
-  seller       Seller              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  balance      Float               @default(0)
-  pending      Float               @default(0)
-  transactions WalletTransaction[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model WalletTransaction {
-  id         String                @id @default(cuid())
-  walletId   String?
-  wallet     SellerWallet?         @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  platformId String?
-  type       WalletTransactionType
-  amount     Float
-  metadata   Json?
-
-  createdAt         DateTime         @default(now())
-  PlatformAccount   PlatformAccount? @relation(fields: [platformAccountId], references: [id])
-  platformAccountId String?
-}
-
-enum WalletTransactionType {
-  CREDIT
-  DEBIT
-}
-
-model PlatformAccount {
-  id           String              @id @default(cuid())
-  balance      Float               @default(0)
-  transactions WalletTransaction[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
-}
-
-// Affiliate commission configuration per product
-model AffiliateCommission {
-  id          String  @id @default(cuid())
-  productId   String  @unique
-  percentage  Float   @default(10)
-  fixedAmount Float?
-  isActive    Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Newsletter subscribers
-model Subscriber {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
