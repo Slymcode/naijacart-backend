@@ -9,7 +9,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "scripts": {
-    "prebuild": "rimraf dist tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "prebuild": "rm -rf dist tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
     "build": "nest build -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start -p tsconfig.build.json",
