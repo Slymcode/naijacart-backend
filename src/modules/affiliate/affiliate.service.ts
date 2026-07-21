@@ -131,7 +131,6 @@ export class AffiliateService {
     const affiliateLinkByCode = new Map(
       affiliate.affiliateLinks.map((link) => [link.code, link]),
     );
-    
 
     const commissionOrderIds = new Set(
       affiliate.commissions
