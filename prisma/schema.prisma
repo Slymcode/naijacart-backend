@@ -118,6 +118,7 @@ model CartItem {
   id        String   @id @default(cuid())
   userId    String
   productId String
+  affiliateCode String @default("")
   quantity  Int
   price     Float
   createdAt DateTime @default(now())
@@ -125,7 +126,7 @@ model CartItem {
   product   Product  @relation(fields: [productId], references: [id])
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, productId])
+  @@unique([userId, productId, affiliateCode])
 }
 
 model Order {
@@ -159,18 +160,19 @@ model Order {
 }
 
 model OrderItem {
-  id        String   @id @default(cuid())
-  orderId   String
-  productId String
-  quantity  Int
-  price     Float
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  sellerId  String?
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id])
-  seller    Seller?  @relation(fields: [sellerId], references: [id])
+  id            String   @id @default(cuid())
+  orderId       String
+  productId     String
+  quantity      Int
+  price         Float
+  name          String
+  affiliateCode String? 
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  sellerId      String?
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product  @relation(fields: [productId], references: [id])
+  seller        Seller?  @relation(fields: [sellerId], references: [id])
 }
 
 model Seller {

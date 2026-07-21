@@ -22,6 +22,9 @@ describe("SellersService", () => {
       findMany: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
     },
+    referral: {
+      findMany: jest.fn(),
+    },
     withdrawalRequest: {
       findMany: jest.fn(),
       update: jest.fn(),
@@ -193,6 +196,7 @@ describe("SellersService", () => {
         product: { id: "product-1", name: "Fine Hair" },
       },
     ]);
+    mockPrisma.orderItem.findMany.mockResolvedValue([{ quantity: 1 }]);
 
     const result = await service.getAffiliateLinksForSeller("user-1", {
       limit: 10,
@@ -208,13 +212,48 @@ describe("SellersService", () => {
     expect(result.data[0].affiliateName).toBe("Jane Doe");
   });
 
+  it("does not count referral order items with empty affiliateCode as conversions", async () => {
+    mockPrisma.seller.findUnique.mockResolvedValue({ id: "seller-1" });
+    mockPrisma.product.findMany.mockResolvedValue([{ id: "product-1" }]);
+    mockPrisma.affiliateLink.findMany.mockResolvedValue([
+      {
+        id: "link-1",
+        code: "AFF-100",
+        clicks: 3,
+        conversions: 0,
+        affiliateId: "affiliate-1",
+        productId: "product-1",
+        affiliate: {
+          id: "affiliate-1",
+          code: "AFF-100",
+          user: { id: "user-1", firstName: "Jane", lastName: "Doe" },
+        },
+        product: { id: "product-1", name: "Fine Hair" },
+      },
+    ]);
+    mockPrisma.affiliateLink.count.mockResolvedValue(1);
+
+    mockPrisma.orderItem.findMany.mockResolvedValue([{ quantity: 1 }]);
+
+    const result = await service.getAffiliateLinksForSeller("user-1", {
+      limit: 10,
+    });
+
+    expect(result.data[0].conversions).toBe(1);
+  });
+
   it("should calculate pending affiliate payouts from seller product affiliate withdrawals", async () => {
     mockPrisma.seller.findUnique.mockResolvedValue({ id: "seller-1" });
     mockPrisma.orderItem.aggregate.mockResolvedValue({
       _sum: { price: 400 },
       _count: { id: 2 },
     });
-    mockPrisma.orderItem.findMany.mockResolvedValue([]);
+    mockPrisma.orderItem.findMany
+      .mockResolvedValueOnce([
+        { price: 200, quantity: 1, orderId: "order-1" },
+        { price: 200, quantity: 1, orderId: "order-2" },
+      ])
+      .mockResolvedValueOnce([]);
     mockPrisma.product.findMany
       .mockResolvedValueOnce([{ id: "product-1" }])
       .mockResolvedValueOnce([{ id: "product-1" }]);

@@ -10,14 +10,33 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger("SellRush");
 
-  // Enable CORS
-  app.enableCors({
-    origin: [
-      "http://10.123.31.116:5173",
-      "http://localhost:5173",
-      process.env.FRONTEND_URL,
-    ],
+  // Enable CORS for local development and configured frontends
+  const allowedOrigins = [
+    "http://10.123.31.116:5173",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    process.env.FRONTEND_URL,
+  ].filter(Boolean) as string[];
 
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (
+        allowedOrigins.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"), false);
+    },
     credentials: true,
   });
 

@@ -1,4 +1,4 @@
-import { IsString, IsNumber, Min } from "class-validator";
+import { IsString, IsNumber, Min, IsOptional } from "class-validator";
 
 export class AddToCartDto {
   @IsString()
@@ -7,6 +7,10 @@ export class AddToCartDto {
   @IsNumber()
   @Min(1)
   quantity: number;
+
+  @IsString()
+  @IsOptional()
+  affiliateCode?: string;
 }
 
 export class UpdateCartItemDto {

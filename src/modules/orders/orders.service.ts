@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderDto, UpdateOrderStatusDto } from "./dto/order.dto";
-import { OrderStatus, PaymentStatus, PaymentSplitStatus } from "@prisma/client";
+import { OrderStatus, PaymentStatus } from "@prisma/client";
 
 @Injectable()
 export class OrdersService {
@@ -19,7 +19,6 @@ export class OrdersService {
       shippingState,
       shippingCountry,
       shippingZipCode,
-      affiliateCode,
     } = createOrderDto;
 
     const sellerGroups = new Map<string, Array<any>>();
@@ -46,12 +45,14 @@ export class OrdersService {
       }
 
       const sellerKey = product.sellerId || "marketplace";
+      const normalizedItemAffiliateCode = item.affiliateCode?.trim() || null;
       const sellerItem = {
         productId: item.productId,
         quantity: item.quantity,
         price: product.price,
         name: product.name,
         sellerId: product.sellerId || null,
+        affiliateCode: normalizedItemAffiliateCode,
       };
 
       subtotal += product.price * item.quantity;
@@ -100,7 +101,6 @@ export class OrdersService {
           0,
         ),
         currency: "NGN",
-        status: PaymentSplitStatus.PENDING,
       }));
 
     if (splitData.length > 0) {
@@ -115,9 +115,14 @@ export class OrdersService {
       amount: number;
       percentage: number;
     }>;
+    const affiliateCodeUsage = new Map<string, number>();
 
     for (const item of items) {
-      const itemAffiliateCode = item.affiliateCode || affiliateCode;
+      // Only consider per-item affiliate codes. Do NOT fallback to a
+      // request-level `affiliateCode` — that would attribute commissions to
+      // items added directly during checkout. This enforces: only items
+      // explicitly added with an affiliate link receive commission.
+      const itemAffiliateCode = item.affiliateCode?.trim();
 
       if (!itemAffiliateCode) {
         continue;
@@ -165,12 +170,21 @@ export class OrdersService {
         amount: commissionAmount,
         percentage: commissionPercentage,
       });
+      affiliateCodeUsage.set(
+        itemAffiliateCode,
+        (affiliateCodeUsage.get(itemAffiliateCode) || 0) + 1,
+      );
     }
 
     if (affiliateEntries.length > 0) {
       const uniqueAffiliateEntries = new Map<
         string,
-        (typeof affiliateEntries)[number]
+        {
+          affiliateId: string;
+          totalAmount: number;
+          weightedPercentage: number;
+          firstCode: string;
+        }
       >();
 
       for (const affiliateEntry of affiliateEntries) {
@@ -179,12 +193,18 @@ export class OrdersService {
         );
 
         if (existingEntry) {
-          existingEntry.amount += affiliateEntry.amount;
-          existingEntry.percentage = affiliateEntry.percentage;
+          existingEntry.totalAmount += affiliateEntry.amount;
+          existingEntry.weightedPercentage +=
+            affiliateEntry.amount * affiliateEntry.percentage;
           continue;
         }
 
-        uniqueAffiliateEntries.set(affiliateEntry.affiliateId, affiliateEntry);
+        uniqueAffiliateEntries.set(affiliateEntry.affiliateId, {
+          affiliateId: affiliateEntry.affiliateId,
+          totalAmount: affiliateEntry.amount,
+          weightedPercentage: affiliateEntry.amount * affiliateEntry.percentage,
+          firstCode: affiliateEntry.code,
+        });
       }
 
       const [firstAffiliateEntry] = Array.from(uniqueAffiliateEntries.values());
@@ -194,23 +214,42 @@ export class OrdersService {
           data: {
             orderId: checkoutOrder.id,
             affiliateId: firstAffiliateEntry.affiliateId,
-            source: firstAffiliateEntry.code,
+            source: firstAffiliateEntry.firstCode,
           },
         });
       }
 
       for (const affiliateEntry of uniqueAffiliateEntries.values()) {
-        await this.prisma.affiliateLink.update({
-          where: { code: affiliateEntry.code },
-          data: { conversions: { increment: 1 } },
-        });
+        for (const [code, count] of affiliateCodeUsage.entries()) {
+          if (
+            affiliateEntries.some(
+              (entry) =>
+                entry.affiliateId === affiliateEntry.affiliateId &&
+                entry.code === code,
+            )
+          ) {
+            await this.prisma.affiliateLink.update({
+              where: { code },
+              data: { conversions: { increment: count } },
+            });
+          }
+        }
+
+        const averagePercentage =
+          affiliateEntry.totalAmount > 0
+            ? Math.round(
+                (affiliateEntry.weightedPercentage /
+                  affiliateEntry.totalAmount) *
+                  100,
+              ) / 100
+            : 0;
 
         await this.prisma.commission.create({
           data: {
             affiliateId: affiliateEntry.affiliateId,
             orderId: checkoutOrder.id,
-            amount: affiliateEntry.amount,
-            percentage: affiliateEntry.percentage,
+            amount: affiliateEntry.totalAmount,
+            percentage: averagePercentage,
           },
         });
       }

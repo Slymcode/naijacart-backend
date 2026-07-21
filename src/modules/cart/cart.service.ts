@@ -61,7 +61,8 @@ export class CartService {
   }
 
   async addToCart(userId: string, addToCartDto: AddToCartDto) {
-    const { productId, quantity } = addToCartDto;
+    const { productId, quantity, affiliateCode } = addToCartDto as any;
+    const normalizedAffiliateCode = affiliateCode?.trim() || "";
 
     // Check if product exists and get its price
     const product = await this.prisma.product.findUnique({
@@ -76,9 +77,16 @@ export class CartService {
       throw new NotFoundException("Insufficient stock");
     }
 
-    // Check if item already in cart
+    // Check if item already in cart for the same affiliate code
+    const code = normalizedAffiliateCode;
     const existingItem = await this.prisma.cartItem.findUnique({
-      where: { userId_productId: { userId, productId } },
+      where: {
+        userId_productId_affiliateCode: {
+          userId,
+          productId,
+          affiliateCode: code,
+        },
+      },
     });
 
     if (existingItem) {
@@ -88,11 +96,12 @@ export class CartService {
       return this.updateCartItem(existingItem.id, { quantity: newQty });
     }
 
-    // Add new item
+    // Add new item (preserve affiliate code so multiple entries can exist for same product)
     return this.prisma.cartItem.create({
       data: {
         userId,
         productId,
+        affiliateCode: code,
         quantity,
         price: product.price,
       },

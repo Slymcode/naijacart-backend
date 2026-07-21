@@ -260,4 +260,52 @@ describe("OrdersService", () => {
       }),
     );
   });
+
+  it("should skip creating affiliate commissions for items with empty affiliateCode", async () => {
+    mockPrisma.product.findUnique
+      .mockResolvedValueOnce({
+        id: "product-1",
+        name: "Product A",
+        price: 100,
+        stock: 5,
+        sellerId: "seller-1",
+      })
+      .mockResolvedValueOnce({
+        id: "product-2",
+        name: "Product B",
+        price: 200,
+        stock: 5,
+        sellerId: "seller-2",
+      });
+    mockPrisma.order.create.mockResolvedValue({ id: "order-2", items: [] });
+    mockPrisma.paymentSplit.createMany.mockResolvedValue([]);
+    mockPrisma.affiliateLink.findUnique.mockResolvedValueOnce({
+      id: "link-1",
+      affiliateId: "affiliate-1",
+      productId: "product-1",
+      code: "code-a",
+    });
+    mockPrisma.affiliateCommission.findUnique.mockResolvedValueOnce({
+      percentage: 10,
+    });
+
+    await service.createOrder("user-1", {
+      items: [
+        { productId: "product-1", quantity: 1, affiliateCode: "code-a" },
+        { productId: "product-2", quantity: 1, affiliateCode: "" },
+      ],
+      shippingAddress: "123 Market St",
+      shippingCity: "Lagos",
+      shippingState: "Lagos",
+      shippingCountry: "NG",
+      shippingZipCode: "100001",
+    } as any);
+
+    expect(mockPrisma.affiliateLink.findUnique).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.affiliateLink.findUnique).toHaveBeenCalledWith({
+      where: { code: "code-a" },
+    });
+    expect(mockPrisma.commission.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.referral.create).toHaveBeenCalledTimes(1);
+  });
 });

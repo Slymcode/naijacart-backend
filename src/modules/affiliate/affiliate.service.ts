@@ -128,6 +128,32 @@ export class AffiliateService {
       throw new NotFoundException("Affiliate not found");
     }
 
+    const affiliateLinkByCode = new Map(
+      affiliate.affiliateLinks.map((link) => [link.code, link]),
+    );
+    
+
+    const commissionOrderIds = new Set(
+      affiliate.commissions
+        .filter((c) => c.status === "APPROVED" || c.status === "PAID")
+        .map((c) => c.orderId),
+    );
+
+    const getLinkForItem = (item: any) => {
+      if (!item) return undefined;
+
+      const itemCode = item.affiliateCode?.trim();
+      if (itemCode) {
+        return affiliateLinkByCode.get(itemCode);
+      }
+
+      // Do not attribute by product-level affiliate links — attribution
+      // must come from explicit item-level `affiliateCode` set when the
+      // product was added to cart via an affiliate link.
+
+      return undefined;
+    };
+
     const linkConversions = affiliate.affiliateLinks.reduce(
       (map, link) => {
         map[link.id] = 0;
@@ -135,16 +161,6 @@ export class AffiliateService {
       },
       {} as Record<string, number>,
     );
-
-    affiliate.referrals.forEach((referral) => {
-      const link = affiliate.affiliateLinks.find(
-        (candidate) => candidate.code === referral.source,
-      );
-
-      if (link) {
-        linkConversions[link.id] = (linkConversions[link.id] || 0) + 1;
-      }
-    });
 
     const orderCache = new Map<string, any>();
     const getOrderForCommission = async (orderId: string) => {
@@ -154,12 +170,66 @@ export class AffiliateService {
 
       const order = await this.prisma.order.findUnique({
         where: { id: orderId },
-        include: { items: true },
+        include: { items: { include: { seller: true } } },
       });
 
       orderCache.set(orderId, order);
       return order;
     };
+
+    const commissionPercentageCache = new Map<string, number>();
+    const getCommissionPercentageForProduct = async (
+      productId?: string,
+    ): Promise<number> => {
+      if (!productId) {
+        return 0;
+      }
+
+      if (commissionPercentageCache.has(productId)) {
+        return commissionPercentageCache.get(productId) || 0;
+      }
+
+      const commission = await this.prisma.affiliateCommission.findUnique({
+        where: { productId },
+      });
+      const percentage = commission?.percentage || 0;
+      commissionPercentageCache.set(productId, percentage);
+      return percentage;
+    };
+
+    const getAffiliatedOrderItems = (order: any) => {
+      // Only match items with explicit affiliateCode; no product-based or referral fallback
+      const directMatches = order.items
+        .map((item: any) => {
+          const link = getLinkForItem(item);
+          return link ? { item, link } : undefined;
+        })
+        .filter(Boolean) as Array<{ item: any; link: any }>;
+      return directMatches;
+    };
+
+    for (const referral of affiliate.referrals.filter(
+      (referral) => !commissionOrderIds.has(referral.orderId),
+    )) {
+      const link = affiliateLinkByCode.get(referral.source);
+      if (!link) continue;
+
+      if (!referral.orderId) {
+        linkConversions[link.id] = (linkConversions[link.id] || 0) + 1;
+        continue;
+      }
+
+      const order = await getOrderForCommission(referral.orderId);
+      if (!order?.items?.length) continue;
+
+      const affiliatedItems = getAffiliatedOrderItems(order);
+      for (const { item, link: itemLink } of affiliatedItems) {
+        if (itemLink.id === link.id) {
+          linkConversions[link.id] =
+            (linkConversions[link.id] || 0) + (item.quantity || 1);
+        }
+      }
+    }
 
     for (const commission of affiliate.commissions.filter(
       (c) => c.status === "APPROVED" || c.status === "PAID",
@@ -168,23 +238,12 @@ export class AffiliateService {
 
       if (!order?.items?.length) continue;
 
-      const hasReferral = affiliate.referrals.some(
-        (referral) =>
-          referral.orderId === commission.orderId &&
-          referral.affiliateId === affiliate.id,
-      );
+      const affiliatedOrderItems = getAffiliatedOrderItems(order);
+      if (affiliatedOrderItems.length === 0) continue;
 
-      if (hasReferral) continue;
-
-      const matchingLink = affiliate.affiliateLinks.find((link) => {
-        const linkSellerId = link.product?.sellerId || link.product?.seller?.id;
-        if (!linkSellerId) return false;
-        return order.items.some((item) => item.sellerId === linkSellerId);
-      });
-
-      if (matchingLink) {
-        linkConversions[matchingLink.id] =
-          (linkConversions[matchingLink.id] || 0) + 1;
+      for (const { item, link } of affiliatedOrderItems) {
+        linkConversions[link.id] =
+          (linkConversions[link.id] || 0) + (item.quantity || 1);
       }
     }
 
@@ -204,91 +263,134 @@ export class AffiliateService {
       0,
     );
 
-    // Total earnings ever earned
-    const totalEarnings = affiliate.commissions
-      .filter((c) => c.status === "APPROVED" || c.status === "PAID")
-      .reduce((sum, c) => sum + c.amount, 0);
+    const approvedCommissions = affiliate.commissions.filter(
+      (c) => c.status === "APPROVED" || c.status === "PAID",
+    );
 
-    // Approved commissions
-    const approvedCommissionTotal = affiliate.commissions
-      .filter((c) => c.status === "APPROVED")
-      .reduce((sum, c) => sum + c.amount, 0);
+    const totalEarnings = approvedCommissions.reduce(
+      (sum, commission) => sum + commission.amount,
+      0,
+    );
 
-    // Money already requested/withdrawn
-    const withdrawnOrReserved = affiliate.withdrawals
-      .filter((w) => ["PENDING", "APPROVED", "COMPLETED"].includes(w.status))
-      .reduce((sum, w) => sum + w.amount, 0);
-
-    // Actual available earnings
-    const availableEarnings = approvedCommissionTotal - withdrawnOrReserved;
-
-    // Pending commissions
     const pendingEarnings = affiliate.commissions
       .filter((c) => c.status === "PENDING")
       .reduce((sum, c) => sum + c.amount, 0);
 
-    const sellerBreakdown = Array.from(
-      affiliate.affiliateLinks.reduce((map, link) => {
-        const sellerId = link.product?.sellerId || link.product?.seller?.id;
-        if (!sellerId) return map;
+    const sellerBreakdownMap = new Map<string, any>();
+    const ensureSellerEntry = (
+      sellerId: string,
+      sellerName: string,
+      affiliateLinkCode: string,
+      affiliateProductSlug: string | null,
+    ) => {
+      if (!sellerId) return undefined;
+      const existing = sellerBreakdownMap.get(sellerId);
+      if (existing) {
+        return existing;
+      }
 
-        const existing = map.get(sellerId) || {
-          sellerId,
-          sellerName: link.product?.seller?.businessName || "Unknown Seller",
-          clicks: 0,
-          conversions: 0,
-          earnings: 0,
-        };
+      const entry = {
+        sellerId,
+        sellerName: sellerName || "Unknown Seller",
+        clicks: 0,
+        conversions: 0,
+        earnings: 0,
+        affiliateLinkCode,
+        affiliateProductSlug,
+      };
+      sellerBreakdownMap.set(sellerId, entry);
+      return entry;
+    };
 
-        existing.clicks += link.clicks;
-        existing.conversions += linkConversions[link.id] || 0;
-        map.set(sellerId, existing);
-        return map;
-      }, new Map<string, any>()),
-    ).map(([, entry]) => entry);
+    for (const link of affiliate.affiliateLinks) {
+      const sellerId = link.product?.sellerId || link.product?.seller?.id;
+      if (!sellerId) {
+        continue;
+      }
 
-    for (const commission of affiliate.commissions.filter(
-      (c) => c.status === "APPROVED" || c.status === "PAID",
-    )) {
+      const entry = ensureSellerEntry(
+        sellerId,
+        link.product?.seller?.businessName || "Unknown Seller",
+        link.code,
+        link.product?.slug || null,
+      );
+      if (!entry) {
+        continue;
+      }
+
+      entry.clicks += link.clicks;
+    }
+
+    for (const commission of approvedCommissions) {
       const order = await getOrderForCommission(commission.orderId);
 
       if (!order?.items?.length) continue;
 
-      const orderSubtotal = order.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
+      const affiliatedOrderItems = getAffiliatedOrderItems(order);
+      if (affiliatedOrderItems.length === 0) continue;
+
+      const referredItems: Array<{
+        item: any;
+        link: any;
+        commissionValue: number;
+      }> = [];
+
+      for (const { item, link } of affiliatedOrderItems) {
+        if (!item.sellerId) continue;
+
+        const sellerName = item.seller?.businessName || "Unknown Seller";
+        const entry = ensureSellerEntry(
+          item.sellerId,
+          sellerName,
+          link.code,
+          link.product?.slug || null,
+        );
+        if (entry) {
+          entry.conversions += item.quantity || 1;
+        }
+
+        const productId = link.productId || link.product?.id || item.productId;
+        const percentage = await getCommissionPercentageForProduct(productId);
+        const commissionValue =
+          percentage && percentage > 0
+            ? Math.round(
+                item.price * item.quantity * (percentage / 100) * 100,
+              ) / 100
+            : item.price * item.quantity;
+
+        referredItems.push({ item, link, commissionValue });
+      }
+
+      if (referredItems.length === 0) continue;
+
+      const sellerWeights = new Map<string, number>();
+      for (const { item, commissionValue } of referredItems) {
+        sellerWeights.set(
+          item.sellerId,
+          (sellerWeights.get(item.sellerId) || 0) + commissionValue,
+        );
+      }
+
+      const totalWeight = Array.from(sellerWeights.values()).reduce(
+        (sum, value) => sum + value,
         0,
       );
 
-      const sellerShares = new Map<string, number>();
-      for (const item of order.items) {
-        if (!item.sellerId) continue;
-        const share =
-          orderSubtotal > 0 ? (item.price * item.quantity) / orderSubtotal : 0;
-        sellerShares.set(
-          item.sellerId,
-          (sellerShares.get(item.sellerId) || 0) + share,
-        );
-      }
+      if (totalWeight === 0) continue;
 
-      for (const [sellerId, share] of sellerShares.entries()) {
-        const sellerAmount = commission.amount * share;
-        const existing = sellerBreakdown.find(
-          (entry) => entry.sellerId === sellerId,
-        );
-        if (existing) {
-          existing.earnings += sellerAmount;
-        } else {
-          sellerBreakdown.push({
-            sellerId,
-            sellerName: "Unknown Seller",
-            clicks: 0,
-            conversions: 0,
-            earnings: sellerAmount,
-          });
+      for (const [sellerId, weight] of sellerWeights.entries()) {
+        if (!sellerId) continue;
+
+        const sellerAmount = (commission.amount * weight) / totalWeight;
+        const existing = sellerBreakdownMap.get(sellerId);
+        if (!existing) {
+          continue;
         }
+        existing.earnings += sellerAmount;
       }
     }
 
+    const sellerBreakdown = Array.from(sellerBreakdownMap.values());
     sellerBreakdown.sort((a, b) => b.earnings - a.earnings);
 
     // Compute reserved/withdrawn amounts per seller so we can surface available amounts
@@ -303,7 +405,7 @@ export class AffiliateService {
           },
           _sum: { amount: true },
         });
-        return agg._sum.amount || 0;
+        return agg?._sum?.amount || 0;
       }),
     );
 
@@ -315,6 +417,13 @@ export class AffiliateService {
       const available = Number(availableRaw.toFixed(2));
       return { ...entry, earnings, availableToWithdraw: available };
     });
+
+    // totalEarnings already computed from approved commissions above
+
+    const availableEarnings = breakdownWithAvailable.reduce(
+      (sum, entry) => sum + (entry.availableToWithdraw || 0),
+      0,
+    );
 
     return {
       affiliate,

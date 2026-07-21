@@ -41,6 +41,7 @@ export class AdminService {
       totalRevenue,
       pendingOrders,
       totalAffiliates,
+      totalSellers,
     ] = await Promise.all([
       this.prisma.user.count({ where: { role: "CUSTOMER" } }),
       this.prisma.product.count({ where: { isActive: true } }),
@@ -51,6 +52,7 @@ export class AdminService {
       }),
       this.prisma.order.count({ where: { status: "PENDING" } }),
       this.prisma.affiliate.count(),
+      this.prisma.seller.count(),
     ]);
 
     return {
@@ -60,6 +62,7 @@ export class AdminService {
       totalRevenue: totalRevenue._sum.total || 0,
       pendingOrders,
       totalAffiliates,
+      totalSellers,
     };
   }
 
@@ -94,13 +97,24 @@ export class AdminService {
   }
 
   async getPlatformAccount() {
-    let account = await this.prisma.platformAccount.findFirst();
-    if (!account) {
-      account = await this.prisma.platformAccount.create({
-        data: { balance: 0 },
+    const key = "platform_account_balance";
+    let setting = await this.prisma.adminSetting.findUnique({
+      where: { key },
+    });
+
+    if (!setting) {
+      setting = await this.prisma.adminSetting.create({
+        data: {
+          key,
+          value: "0",
+        },
       });
     }
-    return account;
+
+    return {
+      id: setting.id,
+      balance: Number(setting.value || 0),
+    };
   }
 
   async getWithdrawalRequests() {

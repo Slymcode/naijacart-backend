@@ -74,18 +74,24 @@ export class SellersService {
       where: { sellerId: seller.id },
     });
 
-    // total sales across order items for this seller
-    const salesAgg = await this.prisma.orderItem.aggregate({
+    // total sales across order items for this seller (sum price * quantity)
+    const saleItems = await this.prisma.orderItem.findMany({
       where: { sellerId: seller.id },
-      _sum: { price: true },
-      _count: { id: true },
+      select: { price: true, quantity: true, orderId: true },
     });
+
+    const totalSales = saleItems.reduce(
+      (sum, it) => sum + (it.price || 0) * (it.quantity || 0),
+      0,
+    );
+
+    const totalOrders = new Set(saleItems.map((it) => it.orderId)).size;
 
     return {
       ...seller,
       totalProducts,
-      totalSales: salesAgg._sum.price || 0,
-      totalOrders: salesAgg._count.id || 0,
+      totalSales,
+      totalOrders,
     };
   }
 
@@ -198,10 +204,9 @@ export class SellersService {
       payoutRequests,
       sellerProducts,
     ] = await Promise.all([
-      this.prisma.orderItem.aggregate({
+      this.prisma.orderItem.findMany({
         where: { sellerId: seller.id },
-        _sum: { price: true },
-        _count: { id: true },
+        select: { price: true, quantity: true, orderId: true },
       }),
       this.prisma.orderItem.findMany({
         where: { sellerId: seller.id },
@@ -246,9 +251,18 @@ export class SellersService {
         ).reduce((sum, item) => sum + item.amount, 0)
       : 0;
 
+    // salesAgg is now an array of items; compute totalSales and distinct orders
+    const totalSales = (salesAgg as any[]).reduce(
+      (sum, it: any) => sum + (it.price || 0) * (it.quantity || 0),
+      0,
+    );
+    const totalOrders = new Set(
+      (salesAgg as any[]).map((it: any) => it.orderId),
+    ).size;
+
     return {
-      totalSales: salesAgg._sum.price || 0,
-      totalOrders: salesAgg._count.id || 0,
+      totalSales,
+      totalOrders,
       topProducts,
       recentOrderItems: recentOrders,
       payoutRequests,
@@ -292,12 +306,35 @@ export class SellersService {
       }),
     ]);
 
+    // Compute conversions per link from completed orders and recorded referrals
+    const conversionsByLinkId = new Map<string, number>();
+    await Promise.all(
+      data.map(async (link: any) => {
+        // Count direct item purchases with this affiliate code on completed orders
+        const directItems = await this.prisma.orderItem.findMany({
+          where: {
+            affiliateCode: link.code,
+            order: { paymentStatus: "COMPLETED" },
+          },
+          select: { quantity: true },
+        });
+
+        const conversions = (directItems || []).reduce(
+          (sum, it) => sum + (it.quantity || 0),
+          0,
+        );
+
+        conversionsByLinkId.set(link.id, conversions);
+      }),
+    );
+
     return {
       data: data.map((link: any) => ({
         ...link,
         affiliateName: link.affiliate?.user
           ? `${link.affiliate.user.firstName} ${link.affiliate.user.lastName}`
           : undefined,
+        conversions: conversionsByLinkId.get(link.id) || 0,
       })),
       total,
       page: Number.isInteger(page) ? page : 0,

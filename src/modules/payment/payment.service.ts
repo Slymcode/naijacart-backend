@@ -131,27 +131,33 @@ export class PaymentService {
         data: { status: CommissionStatus.APPROVED },
       });
 
-      // Update affiliate pending earnings
+      // Update affiliate pending earnings per affiliate
       const approvedCommissions = await this.prisma.commission.findMany({
         where: { orderId, status: CommissionStatus.APPROVED },
       });
-      const totalCommission = approvedCommissions.reduce(
-        (sum, c) => sum + c.amount,
-        0,
+      const totalsByAffiliate = approvedCommissions.reduce(
+        (acc, commission) => {
+          const currentTotal = acc.get(commission.affiliateId) || 0;
+          acc.set(commission.affiliateId, currentTotal + commission.amount);
+          return acc;
+        },
+        new Map<string, number>(),
       );
-      if (totalCommission > 0 && approvedCommissions.length > 0) {
-        const affiliateId = approvedCommissions[0].affiliateId;
-        await this.prisma.affiliate.update({
-          where: { id: affiliateId },
-          data: {
-            pendingEarnings: {
-              increment: totalCommission,
+
+      for (const [affiliateId, totalCommission] of totalsByAffiliate.entries()) {
+        if (totalCommission > 0) {
+          await this.prisma.affiliate.update({
+            where: { id: affiliateId },
+            data: {
+              pendingEarnings: {
+                increment: totalCommission,
+              },
+              totalEarnings: {
+                increment: totalCommission,
+              },
             },
-            totalEarnings: {
-              increment: totalCommission,
-            },
-          },
-        });
+          });
+        }
       }
 
       // Payment splits exist for seller revenue allocation.
